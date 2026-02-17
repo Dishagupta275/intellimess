@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Meal Booking</title>
+</head>
+<body>
+    <h2>Meal Booking</h2>
+
+    <form method="POST" action="/book">
+        <label>Student Name:</label><br>
+        <input type="text" name="name" required><br><br>
+
+        <label>Select Meal:</label><br>
+        <select name="meal">
+            <option value="Breakfast">Breakfast</option>
+            <option value="Lunch">Lunch</option>
+            <option value="Dinner">Dinner</option>
+        </select><br><br>
+
+        <label>Food Type:</label><br>
+        <select name="food_type">
+            <option value="Veg">Veg</option>
+            <option value="Non-Veg">Non-Veg</option>
+        </select><br><br>
+
+        <label>Booking Date:</label><br>
+        <input type="date" name="date" id="date" required><br><br>
+
+        <button type="submit">Book Meal</button>
+    </form>
+
+    <script>
+        const dateInput = document.getElementById("date");
+        const today = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(today.getDate() + 1);
+
+        function formatDate(d) {
+            return d.toISOString().split("T")[0];
+        }
+
+        dateInput.min = formatDate(today);
+        dateInput.max = formatDate(tomorrow);
+    </script>
+</body>
+</html>
