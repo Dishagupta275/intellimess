@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Welcome, {{ username }}</h2>
+
+        <div class="dashboard-links">
+            <a href="/booking" class="btn">Book Meal</a>
+            <a href="/menu" class="btn">View Menu</a>
+            <a href="/feedback" class="btn">Give Feedback</a>
+            <a href="/logout" class="btn">Logout</a>
+        </div>
+    </div>
+</body>
+</html>

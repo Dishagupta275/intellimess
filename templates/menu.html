@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upcoming Meals</title>
+</head>
+<body>
+    <h2>Next 4 Meals</h2>
+
+    {% for item in menu_data %}
+        <h3>{{ item.day }} - {{ item.meal }}</h3>
+        <ul>
+            {% for dish in item.dishes %}
+                <li>{{ dish }}</li>
+            {% endfor %}
+        </ul>
+        <hr>
+    {% endfor %}
+</body>
+</html>

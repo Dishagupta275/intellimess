@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Meal Feedback</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <div class="container">
+        <h2>📝 Give Feedback</h2>
+
+        {% if feedback_data %}
+        <form method="POST" action="/submit_feedback">
+
+            {% for meal, dishes in feedback_data.items() %}
+                <div class="menu-card">
+                    <h3>{{ meal }}</h3>
+
+                    {% for dish in dishes %}
+                        <div class="form-group">
+                            <label>{{ dish.dish_name }}</label>
+
+                            <select name="rating_{{ dish.id }}">
+                                <option value="5">5 - Excellent</option>
+                                <option value="4">4 - Good</option>
+                                <option value="3">3 - Average</option>
+                                <option value="2">2 - Poor</option>
+                                <option value="1">1 - Bad</option>
+                            </select>
+
+                            <br>
+
+                            <input type="text"
+                                   name="comment_{{ dish.id }}"
+                                   placeholder="Optional comment">
+                        </div>
+                        <hr>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+
+            <button type="submit">Submit Feedback</button>
+        </form>
+        {% else %}
+            <p>No completed meals available for feedback.</p>
+        {% endif %}
+
+        <a href="/student" class="back-link">← Back to Dashboard</a>
+    </div>
+</body>
+</html>
