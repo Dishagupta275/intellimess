@@ -6,228 +6,85 @@
     <title>Meal Feedback - IntelliMess</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        /* Feedback specific styles */
-        .feedback-container {
-            max-width: 700px;
-            margin: 30px auto;
-            padding: 30px;
-        }
-
-        .feedback-card {
-            background: var(--white);
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: var(--shadow);
-            margin-bottom: 25px;
-        }
-
-        .feedback-card h2 {
-            color: var(--dark-color);
-            font-size: 26px;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .feedback-meal-header {
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
-            color: white;
-            padding: 15px 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .feedback-meal-header h3 {
-            margin: 0;
-            font-size: 18px;
-        }
-
-        .dish-feedback-item {
-            background: #f9f9f9;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 2px solid #eee;
-            transition: var(--transition);
-        }
-
-        .dish-feedback-item:hover {
-            border-color: var(--primary-light);
-            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
-        }
-
-        .dish-feedback-item h4 {
-            color: var(--dark-color);
-            font-size: 16px;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .dish-feedback-item h4 i {
-            color: var(--primary-color);
-        }
-
-        .feedback-form-group {
-            margin-bottom: 15px;
-        }
-
-        .feedback-form-group label {
-            display: block;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-
-        .feedback-form-group select,
-        .feedback-form-group textarea {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 14px;
-            font-family: 'Poppins', sans-serif;
-            transition: var(--transition);
-            background: white;
-        }
-
-        .feedback-form-group select:focus,
-        .feedback-form-group textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
-        }
-
-        .feedback-form-group textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-
-        .no-feedback {
-            text-align: center;
-            padding: 50px;
-            color: #666;
-        }
-
-        .no-feedback i {
-            font-size: 60px;
-            color: #ddd;
-            margin-bottom: 20px;
-        }
-
-        .no-feedback p {
-            font-size: 16px;
-        }
-
-        .feedback-submit-btn {
-            width: 100%;
-            margin-top: 20px;
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-            color: white;
-            padding: 14px 28px;
-            border: none;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            font-family: 'Poppins', sans-serif;
-            cursor: pointer;
-            transition: var(--transition);
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
-        }
-
-        .feedback-submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
-        }
-
-        .feedback-section-divider {
-            margin: 30px 0;
-            border: none;
-            border-top: 2px dashed #eee;
-        }
-    </style>
 </head>
+
 <body>
-    <div class="dashboard-wrapper">
-        <nav class="navbar">
-            <a href="/student" class="navbar-brand">
-                <i class="fas fa-utensils"></i>
-                <span>IntelliMess</span>
-            </a>
-            <div class="nav-links">
-                <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
-                <a href="/booking"><i class="fas fa-calendar-plus"></i> Book Meal</a>
-                <a href="/menu"><i class="fas fa-list"></i> Menu</a>
-                <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-            </div>
-        </nav>
+<div class="dashboard-wrapper">
 
-        <div class="feedback-container">
-            <div class="feedback-card">
-                <h2><i class="fas fa-comment-dots"></i> Give Feedback</h2>
+    <div class="feedback-container">
+        <div class="feedback-card">
+            <h2><i class="fas fa-comment-dots"></i> Give Feedback</h2>
 
-                {% if feedback_data %}
-                    {% for item in feedback_data %}
-                    <div class="feedback-meal-header">
-                        <i class="fas fa-utensils"></i>
-                        <h3>{{ item.meal }}</h3>
-                    </div>
+            {% if feedback_data %}
+                {% for item in feedback_data %}
 
-                    <form method="POST" action="/submit_feedback">
-                        <input type="hidden" name="booking_id" value="{{ item.booking_id }}">
+                <div class="feedback-meal-header">
+                    <i class="fas fa-utensils"></i>
+                    <h3>{{ item.meal }}</h3>
+                </div>
 
-                        {% for dish in item.dishes %}
-                        <div class="dish-feedback-item">
-                            <h4><i class="fas fa-drumstick-bite"></i> {{ dish.dish_name }}</h4>
-                            
-                            <div class="feedback-form-group">
-                                <label>Rating</label>
-                                <select name="dish_{{ dish.id }}" required>
-                                    <option value="">Select Rating</option>
-                                    <option value="5">5 - Excellent</option>
-                                    <option value="4">4 - Very Good</option>
-                                    <option value="3">3 - Average</option>
-                                    <option value="2">2 - Poor</option>
-                                    <option value="1">1 - Very Poor</option>
-                                </select>
-                            </div>
+                <form method="POST" action="/submit_feedback">
+                    <input type="hidden" name="booking_id" value="{{ item.booking_id }}">
 
-                            <div class="feedback-form-group">
-                                <label>Comment (Optional)</label>
-                                <textarea name="comment_{{ dish.id }}" rows="2" placeholder="Share your thoughts about this dish..."></textarea>
-                            </div>
+                    {% for dish in item.dishes %}
+                    <div class="dish-feedback-item">
+
+                        <h4>{{ dish.dish_name }}</h4>
+
+                        <!-- Consumption Checkbox -->
+                        <label>
+                            <input type="checkbox"
+                                   name="consumed_{{ dish.id }}"
+                                   onclick="toggleRating({{ dish.id }})">
+                            I consumed this dish
+                        </label>
+
+                        <!-- Rating Section -->
+                        <div id="rating_section_{{ dish.id }}" style="display:none; margin-top:10px;">
+
+                            <select name="rating_{{ dish.id }}">
+                                <option value="">Select Rating</option>
+                                <option value="5">5 - Excellent</option>
+                                <option value="4">4 - Very Good</option>
+                                <option value="3">3 - Average</option>
+                                <option value="2">2 - Poor</option>
+                                <option value="1">1 - Very Poor</option>
+                            </select>
+
+                            <br><br>
+
+                            <textarea name="comment_{{ dish.id }}"
+                                      rows="2"
+                                      placeholder="Optional comment"></textarea>
                         </div>
-                        {% endfor %}
 
-                        <button type="submit" class="feedback-submit-btn">
-                            <i class="fas fa-paper-plane"></i> Submit Feedback
-                        </button>
-                    </form>
-
-                    {% if not loop.last %}
-                    <hr class="feedback-section-divider">
-                    {% endif %}
+                    </div>
                     {% endfor %}
-                {% else %}
-                <div class="no-feedback">
-                    <i class="fas fa-check-circle"></i>
-                    <p>No completed meals available for feedback.</p>
-                    <p style="margin-top: 10px; font-size: 14px;">Check back after your meals are completed!</p>
-                </div>
-                {% endif %}
 
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="/student" class="back-link">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
-                    </a>
-                </div>
-            </div>
+                    <button type="submit" class="feedback-submit-btn">
+                        Submit Feedback
+                    </button>
+                </form>
+
+                <hr>
+
+                {% endfor %}
+            {% else %}
+                <p>No completed meals available for feedback.</p>
+            {% endif %}
+
         </div>
     </div>
+
+</div>
+
+<script>
+function toggleRating(id) {
+    const section = document.getElementById("rating_section_" + id);
+    section.style.display =
+        section.style.display === "none" ? "block" : "none";
+}
+</script>
+
 </body>
 </html>

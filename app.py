@@ -227,6 +227,8 @@ def book():
     """
 
 # ---------------- FEEDBACK ----------------
+from datetime import datetime
+
 @app.route('/feedback')
 def feedback():
     if 'user_id' not in session:
@@ -235,7 +237,6 @@ def feedback():
     user_id = session['user_id']
     now = datetime.now()
     today = now.date()
-    current_day = now.strftime('%A')
 
     meal_times = {
         "Breakfast": 7,
@@ -245,13 +246,14 @@ def feedback():
     }
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)  # buffered fixes unread result error
 
-    # Get today's bookings
+    # Get all bookings up to today
     cursor.execute("""
-        SELECT id, meal, food_type
+        SELECT id, meal, food_type, booking_date
         FROM bookings
-        WHERE user_id = %s AND booking_date = %s
+        WHERE user_id = %s
+        AND booking_date <= %s
     """, (user_id, today))
 
     bookings = cursor.fetchall()
@@ -261,15 +263,30 @@ def feedback():
         meal = booking['meal']
         food_type = booking['food_type']
         booking_id = booking['id']
+        booking_date = booking['booking_date']
 
-        meal_hour = meal_times[meal]
-        meal_time = datetime.combine(today, datetime.min.time()).replace(hour=meal_hour)
+        meal_hour = meal_times.get(meal)
+        meal_time = datetime.combine(booking_date, datetime.min.time()).replace(hour=meal_hour)
 
-        # Only allow after meal completed
+        # Allow only after meal time
         if now < meal_time:
             continue
 
-        # Fetch dishes
+        # Check if feedback already submitted
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM feedback
+            WHERE booking_id = %s
+        """, (booking_id,))
+
+        result = cursor.fetchone()
+
+        if result['count'] > 0:
+            continue
+
+        # Fetch dishes for that day & meal
+        day_name = booking_date.strftime('%A')
+
         if food_type == "Veg":
             cursor.execute("""
                 SELECT d.id, d.dish_name
@@ -280,7 +297,7 @@ def feedback():
                 AND wm.meal = %s
                 AND d.dish_name NOT LIKE '%Chicken%'
                 AND d.dish_name NOT LIKE '%Egg%'
-            """, (current_day, meal))
+            """, (day_name, meal))
         else:
             cursor.execute("""
                 SELECT d.id, d.dish_name
@@ -289,7 +306,7 @@ def feedback():
                 JOIN weekly_menu wm ON wm.id = mi.weekly_menu_id
                 WHERE wm.day_of_week = %s
                 AND wm.meal = %s
-            """, (current_day, meal))
+            """, (day_name, meal))
 
         dishes = cursor.fetchall()
 
@@ -310,55 +327,59 @@ def submit_feedback():
 
     user_id = session['user_id']
     booking_id = request.form.get('booking_id')
-
-    if not booking_id:
-        return "Booking ID missing."
+    feedback_date = datetime.now().date()
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    for key in request.form:
-        if key.startswith("dish_"):
+    # Prevent duplicate submission
+    cursor.execute("""
+        SELECT id FROM feedback WHERE booking_id = %s
+    """, (booking_id,))
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return redirect('/student')
+
+    for key in request.form.keys():
+        if key.startswith("consumed_"):
             dish_id = key.split("_")[1]
-            rating = request.form.get(key)
-            comment = request.form.get(f"comment_{dish_id}")
 
-            # Prevent duplicate feedback
-            cursor.execute("""
-                SELECT id FROM feedback
-                WHERE user_id=%s AND booking_id=%s AND dish_id=%s
-            """, (user_id, booking_id, dish_id))
+            rating = request.form.get(f'rating_{dish_id}')
+            comment = request.form.get(f'comment_{dish_id}')
 
-            if cursor.fetchone():
-                continue
+            if rating:
+                cursor.execute("""
+                    INSERT INTO feedback
+                    (user_id, booking_id, dish_id, rating, feedback_date, comment)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (user_id, booking_id, dish_id, rating, feedback_date, comment))
 
-            cursor.execute("""
-                INSERT INTO feedback
-                (user_id, booking_id, dish_id, rating, comment, feedback_date)
-                VALUES (%s, %s, %s, %s, %s, CURDATE())
-            """, (user_id, booking_id, dish_id, rating, comment))
     conn.commit()
     cursor.close()
     conn.close()
 
-    return """
-<script>
-    alert('Feedback submitted successfully!');
-    window.location.href='/student';
-</script>
-"""
+    return redirect('/student')
 # ---------------- ADMIN ----------------
+from datetime import datetime, timedelta
+
 @app.route('/admin')
 def admin():
     if session.get('role') != 'admin':
         return redirect('/login')
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
 
+    # -------------------
+    # ALL BOOKINGS
+    # -------------------
     cursor.execute("SELECT * FROM bookings")
-    bookings = cursor.fetchall()
-        # Next upcoming meal count
+    bookings = cursor.fetchall() or []
+
+    # -------------------
+    # NEXT MEAL LOGIC
+    # -------------------
     meal_schedule = [
         ("Breakfast", 7),
         ("Lunch", 12),
@@ -378,7 +399,7 @@ def admin():
 
     if not next_meal:
         next_meal = "Breakfast"
-        today_date = today_date + timedelta(days=1)
+        today_date += timedelta(days=1)
 
     cursor.execute("""
         SELECT COUNT(*) as total
@@ -386,15 +407,32 @@ def admin():
         WHERE meal=%s AND booking_date=%s
     """, (next_meal, today_date))
 
-    next_meal_count = cursor.fetchone()['total']
-    cursor.execute("""
-        SELECT f.rating, d.dish_name, u.username
-        FROM feedback f
-        JOIN dishes d ON f.dish_id = d.id
-        JOIN users u ON f.user_id = u.id
-    """)
-    feedback = cursor.fetchall()
+    result = cursor.fetchone()
+    next_meal_count = result['total'] if result else 0
 
+    # -------------------
+    # VEG / NONVEG COUNT
+    # -------------------
+    cursor.execute("""
+        SELECT food_type, COUNT(*) as count
+        FROM bookings
+        WHERE meal=%s AND booking_date=%s
+        GROUP BY food_type
+    """, (next_meal, today_date))
+
+    veg_count = 0
+    nonveg_count = 0
+
+    rows = cursor.fetchall() or []
+    for row in rows:
+        if row['food_type'] == "Veg":
+            veg_count = row['count']
+        else:
+            nonveg_count = row['count']
+
+    # -------------------
+    # DISH RATINGS
+    # -------------------
     cursor.execute("""
         SELECT d.dish_name, AVG(f.rating) as avg_rating
         FROM feedback f
@@ -402,13 +440,37 @@ def admin():
         GROUP BY d.dish_name
         ORDER BY avg_rating DESC
     """)
-    dish_stats = cursor.fetchall()
+    dish_stats = cursor.fetchall() or []
 
     most_liked = dish_stats[0] if dish_stats else None
     least_liked = dish_stats[-1] if dish_stats else None
 
+    # -------------------
+    # OVERALL SATISFACTION
+    # -------------------
     cursor.execute("SELECT AVG(rating) as overall FROM feedback")
-    overall = cursor.fetchone()
+    overall_row = cursor.fetchone()
+    overall = overall_row['overall'] if overall_row and overall_row['overall'] else 0
+
+    # -------------------
+    # MEAL-WISE BOOKING STATS (FOR CHART)
+    # -------------------
+    cursor.execute("""
+        SELECT meal, COUNT(*) as count
+        FROM bookings
+        GROUP BY meal
+    """)
+    meal_stats = cursor.fetchall() or []
+
+    # -------------------
+    # VEG vs NONVEG STATS (FOR CHART)
+    # -------------------
+    cursor.execute("""
+        SELECT food_type, COUNT(*) as count
+        FROM bookings
+        GROUP BY food_type
+    """)
+    food_stats = cursor.fetchall() or []
 
     cursor.close()
     conn.close()
@@ -416,16 +478,18 @@ def admin():
     return render_template(
         "admin.html",
         bookings=bookings,
-        feedback=feedback,
         dish_stats=dish_stats,
         most_liked=most_liked,
         least_liked=least_liked,
         overall=overall,
         next_meal=next_meal,
         next_meal_date=today_date,
-        next_meal_count=next_meal_count
+        next_meal_count=next_meal_count,
+        veg_count=veg_count,
+        nonveg_count=nonveg_count,
+        meal_stats=meal_stats,
+        food_stats=food_stats
     )
-
 # ---------------- RUN ----------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
