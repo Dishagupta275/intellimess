@@ -1,21 +1,46 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <h2>Login</h2>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo">
+                    <i class="fas fa-utensils"></i>
+                </div>
+                <h1>IntelliMess</h1>
+                <p>Welcome back! Please login to continue</p>
+            </div>
 
-    <form method="POST" action="/login">
-        <label>Username:</label><br>
-        <input type="text" name="username" required><br><br>
+            <form method="POST" action="/login">
+                <div class="form-group">
+                    <input type="text" name="username" id="username" placeholder=" " required>
+                    <label for="username">Username</label>
+                    <i class="fas fa-user input-icon"></i>
+                </div>
 
-        <label>Password:</label><br>
-        <input type="password" name="password" required><br><br>
+                <div class="form-group">
+                    <input type="password" name="password" id="password" placeholder=" " required>
+                    <label for="password">Password</label>
+                    <i class="fas fa-lock input-icon"></i>
+                </div>
 
-        <button type="submit">Login</button>
-    </form>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Login
+                </button>
+            </form>
 
-    <p>New student? <a href="/register">Register here</a></p>
+            <div class="auth-footer">
+                <p>New student? <a href="/register">Register here</a></p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

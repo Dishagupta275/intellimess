@@ -166,10 +166,11 @@ def book():
         return "Booking allowed only for today or tomorrow."
 
     meal_times = {
-        "Breakfast": 8,
-        "Lunch": 13,
-        "Dinner": 20
-    }
+    "Breakfast": 8,
+    "Lunch": 13,
+    "Snacks": 16,
+    "Dinner": 20
+}
 
     meal_hour = meal_times[meal]
     meal_datetime = datetime.combine(booking_date, datetime.min.time()).replace(hour=meal_hour)
@@ -191,16 +192,39 @@ def book():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Check duplicate booking
+    cursor.execute("""
+        SELECT id FROM bookings
+        WHERE user_id=%s AND meal=%s AND booking_date=%s
+    """, (user_id, meal, booking_date))
+
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return """
+        <script>
+            alert('You have already booked this meal.');
+            window.location.href='/student';
+        </script>
+        """
+
+    # Insert booking
     cursor.execute("""
         INSERT INTO bookings
         (user_id, meal, food_type, booking_date, booking_time)
         VALUES (%s, %s, %s, %s, %s)
     """, (user_id, meal, food_type, booking_date, current_time))
+
     conn.commit()
     cursor.close()
     conn.close()
 
-    return "Booking successful"
+    return """
+    <script>
+        alert('Booking Successful!');
+        window.location.href='/student';
+    </script>
+    """
 
 # ---------------- FEEDBACK ----------------
 @app.route('/feedback')
@@ -223,32 +247,37 @@ def feedback():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # Get today's bookings
     cursor.execute("""
-        SELECT meal, food_type
+        SELECT id, meal, food_type
         FROM bookings
         WHERE user_id = %s AND booking_date = %s
     """, (user_id, today))
 
     bookings = cursor.fetchall()
-    feedback_data = {}
+    feedback_data = []
 
     for booking in bookings:
         meal = booking['meal']
         food_type = booking['food_type']
+        booking_id = booking['id']
 
         meal_hour = meal_times[meal]
         meal_time = datetime.combine(today, datetime.min.time()).replace(hour=meal_hour)
 
+        # Only allow after meal completed
         if now < meal_time:
             continue
 
+        # Fetch dishes
         if food_type == "Veg":
             cursor.execute("""
                 SELECT d.id, d.dish_name
                 FROM dishes d
                 JOIN menu_items mi ON d.id = mi.dish_id
                 JOIN weekly_menu wm ON wm.id = mi.weekly_menu_id
-                WHERE wm.day_of_week = %s AND wm.meal = %s
+                WHERE wm.day_of_week = %s
+                AND wm.meal = %s
                 AND d.dish_name NOT LIKE '%Chicken%'
                 AND d.dish_name NOT LIKE '%Egg%'
             """, (current_day, meal))
@@ -258,53 +287,70 @@ def feedback():
                 FROM dishes d
                 JOIN menu_items mi ON d.id = mi.dish_id
                 JOIN weekly_menu wm ON wm.id = mi.weekly_menu_id
-                WHERE wm.day_of_week = %s AND wm.meal = %s
-                AND d.dish_name NOT LIKE '%Paneer%'
+                WHERE wm.day_of_week = %s
+                AND wm.meal = %s
             """, (current_day, meal))
 
-        feedback_data[meal] = cursor.fetchall()
+        dishes = cursor.fetchall()
+
+        feedback_data.append({
+            "booking_id": booking_id,
+            "meal": meal,
+            "dishes": dishes
+        })
 
     cursor.close()
     conn.close()
 
-    if not feedback_data:
-        return "No completed meals available for feedback."
-
     return render_template("feedback.html", feedback_data=feedback_data)
-
 @app.route('/submit_feedback', methods=['POST'])
 def submit_feedback():
     if 'user_id' not in session:
         return redirect('/login')
 
     user_id = session['user_id']
-    feedback_date = datetime.now().date()
+    booking_id = request.form.get('booking_id')
+
+    if not booking_id:
+        return "Booking ID missing."
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
     for key in request.form:
-        if key.startswith("rating_"):
+        if key.startswith("dish_"):
             dish_id = key.split("_")[1]
-            rating = request.form[key]
-            comment = request.form.get(f"comment_{dish_id}", "")
+            rating = request.form.get(key)
+            comment = request.form.get(f"comment_{dish_id}")
+
+            # Prevent duplicate feedback
+            cursor.execute("""
+                SELECT id FROM feedback
+                WHERE user_id=%s AND booking_id=%s AND dish_id=%s
+            """, (user_id, booking_id, dish_id))
+
+            if cursor.fetchone():
+                continue
 
             cursor.execute("""
                 INSERT INTO feedback
-                (user_id, dish_id, rating, comment, feedback_date)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (user_id, dish_id, rating, comment, feedback_date))
-
+                (user_id, booking_id, dish_id, rating, comment, feedback_date)
+                VALUES (%s, %s, %s, %s, %s, CURDATE())
+            """, (user_id, booking_id, dish_id, rating, comment))
     conn.commit()
     cursor.close()
     conn.close()
 
-    return "Feedback submitted successfully"
-
+    return """
+<script>
+    alert('Feedback submitted successfully!');
+    window.location.href='/student';
+</script>
+"""
 # ---------------- ADMIN ----------------
 @app.route('/admin')
 def admin():
-    if 'user_id' not in session or session['role'] != 'admin':
+    if session.get('role') != 'admin':
         return redirect('/login')
 
     conn = get_db_connection()
@@ -312,7 +358,35 @@ def admin():
 
     cursor.execute("SELECT * FROM bookings")
     bookings = cursor.fetchall()
+        # Next upcoming meal count
+    meal_schedule = [
+        ("Breakfast", 7),
+        ("Lunch", 12),
+        ("Snacks", 16),
+        ("Dinner", 19)
+    ]
 
+    now = datetime.now()
+    today_date = now.date()
+    next_meal = None
+
+    for meal, hour in meal_schedule:
+        meal_time = datetime.combine(today_date, datetime.min.time()).replace(hour=hour)
+        if now < meal_time:
+            next_meal = meal
+            break
+
+    if not next_meal:
+        next_meal = "Breakfast"
+        today_date = today_date + timedelta(days=1)
+
+    cursor.execute("""
+        SELECT COUNT(*) as total
+        FROM bookings
+        WHERE meal=%s AND booking_date=%s
+    """, (next_meal, today_date))
+
+    next_meal_count = cursor.fetchone()['total']
     cursor.execute("""
         SELECT f.rating, d.dish_name, u.username
         FROM feedback f
@@ -346,7 +420,10 @@ def admin():
         dish_stats=dish_stats,
         most_liked=most_liked,
         least_liked=least_liked,
-        overall=overall
+        overall=overall,
+        next_meal=next_meal,
+        next_meal_date=today_date,
+        next_meal_count=next_meal_count
     )
 
 # ---------------- RUN ----------------

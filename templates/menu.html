@@ -2,18 +2,25 @@
 <html>
 <head>
     <title>Upcoming Meals</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-    <h2>Next 4 Meals</h2>
+    <div class="menu-container">
+        <h2>🍽️ Next 4 Meals</h2>
 
-    {% for item in menu_data %}
-        <h3>{{ item.day }} - {{ item.meal }}</h3>
-        <ul>
-            {% for dish in item.dishes %}
-                <li>{{ dish }}</li>
-            {% endfor %}
-        </ul>
-        <hr>
-    {% endfor %}
+        {% for item in menu_data %}
+            <div class="menu-card">
+                <h3>{{ item.day }} - {{ item.meal }}</h3>
+                <ul>
+                    {% for dish in item.dishes %}
+                        <li>{{ dish }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endfor %}
+
+        <a href="/student" class="back-link">← Back to Dashboard</a>
+    </div>
 </body>
 </html>

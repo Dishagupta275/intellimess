@@ -1,27 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Student Registration</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <h2>Student Registration</h2>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo">
+                    <i class="fas fa-utensils"></i>
+                </div>
+                <h1>IntelliMess</h1>
+                <p>Create your student account</p>
+            </div>
 
-    <form method="POST" action="/register">
-        <label>Username:</label><br>
-        <input type="text" name="username" required><br><br>
+            <form method="POST" action="/register">
+                <div class="form-group">
+                    <input type="text" name="username" id="username" placeholder=" " required>
+                    <label for="username">Username</label>
+                    <i class="fas fa-user input-icon"></i>
+                </div>
 
-        <label>Password:</label><br>
-        <input type="password" name="password" required><br><br>
+                <div class="form-group">
+                    <input type="password" name="password" id="password" placeholder=" " required>
+                    <label for="password">Password</label>
+                    <i class="fas fa-lock input-icon"></i>
+                </div>
 
-        <label>Roll Number:</label><br>
-        <input type="text" name="roll_no" required><br><br>
+                <div class="form-group">
+                    <input type="text" name="roll_no" id="roll_no" placeholder=" " required>
+                    <label for="roll_no">Roll Number</label>
+                    <i class="fas fa-id-card input-icon"></i>
+                </div>
 
-        <label>Phone Number:</label><br>
-        <input type="text" name="phone_no" required><br><br>
+                <div class="form-group">
+                    <input type="text" name="phone_no" id="phone_no" placeholder=" " required>
+                    <label for="phone_no">Phone Number</label>
+                    <i class="fas fa-phone input-icon"></i>
+                </div>
 
-        <button type="submit">Register</button>
-    </form>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i>
+                    Register
+                </button>
+            </form>
 
-    <p><a href="/login">Back to login</a></p>
+            <div class="auth-footer">
+                <p>Already have an account? <a href="/login">Login here</a></p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

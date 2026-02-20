@@ -1,98 +1,235 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Admin Dashboard</title>
-</head>
-<body>
-    <h2>Admin Dashboard</h2>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard - IntelliMess</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+  </head>
 
-    <h3>All Bookings</h3>
-    <table border="1">
-        <tr>
-            <th>ID</th>
-            <th>User ID</th>
-            <th>Meal</th>
-            <th>Food Type</th>
-            <th>Date</th>
-            <th>Time</th>
-        </tr>
+  <body>
+    <div class="dashboard-wrapper">
+      <nav class="navbar">
+        <a href="/admin" class="navbar-brand">
+          <i class="fas fa-utensils"></i>
+          <span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+          <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+      </nav>
 
-        {% for b in bookings %}
-        <tr>
-            <td>{{ b.id }}</td>
-            <td>{{ b.user_id }}</td>
-            <td>{{ b.meal }}</td>
-            <td>{{ b.food_type }}</td>
-            <td>{{ b.booking_date }}</td>
-            <td>{{ b.booking_time }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+      <div class="admin-container">
+        <div class="admin-header">
+          <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+          <p>Manage bookings, view statistics, and monitor feedback</p>
+        </div>
 
-    <h3>Feedback Records</h3>
-    <table border="1">
-        <tr>
-            <th>Student</th>
-            <th>Dish</th>
-            <th>Rating</th>
-            <th>Date</th>
-        </tr>
+        <div class="admin-stats">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-value">{{ next_meal_count }}</div>
+            <div class="stat-label">Next Meal Bookings</div>
+          </div>
+          <div class="stat-card">
+            <div
+              class="stat-icon"
+              style="background: linear-gradient(135deg, #ff9800, #f57c00)"
+            >
+              <i class="fas fa-utensils"></i>
+            </div>
+            <div class="stat-value">{{ bookings|length }}</div>
+            <div class="stat-label">Total Bookings</div>
+          </div>
+          <div class="stat-card">
+            <div
+              class="stat-icon"
+              style="background: linear-gradient(135deg, #9c27b0, #7b1fa2)"
+            >
+              <i class="fas fa-star"></i>
+            </div>
+            <div class="stat-value">{{ dish_stats|length }}</div>
+            <div class="stat-label">Dishes Rated</div>
+          </div>
+        </div>
 
-        {% for f in feedback %}
-        <tr>
-            <td>{{ f.username }}</td>
-            <td>{{ f.dish_name }}</td>
-            <td>{{ f.rating }}</td>
-            <td>{{ f.feedback_date }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+        <div
+          style="
+            background: linear-gradient(
+              135deg,
+              var(--primary-color),
+              var(--primary-light)
+            );
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            margin-top: 15px;
+          "
+        >
+          <strong style="font-size: 20px">{{ next_meal }}</strong>
+          <span style="margin: 0 10px">|</span>
+          <span>{{ next_meal_date }}</span>
 
-    <h3>Dish-wise Average Ratings</h3>
-    <table border="1">
-        <tr>
-            <th>Dish</th>
-            <th>Average Rating</th>
-        </tr>
+          <div style="margin-top: 15px">
+            <div>Total: <strong>{{ next_meal_count }}</strong></div>
+            <div>Veg: {{ veg_count }}</div>
+            <div>Non-Veg: {{ nonveg_count }}</div>
+          </div>
+        </div>
 
-        {% for d in dish_stats %}
-        <tr>
-            <td>{{ d.dish_name }}</td>
-            <td>{{ "%.2f"|format(d.avg_rating) }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+        <div class="admin-section">
+          <h3><i class="fas fa-list"></i> All Bookings</h3>
+          {% if bookings %}
+          <table
+            style="width: 100%; border-collapse: collapse; margin-top: 15px"
+          >
+            <thead>
+              <tr style="background: #f5f5f5">
+                <th
+                  style="
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 2px solid #ddd;
+                  "
+                >
+                  User ID
+                </th>
+                <th
+                  style="
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 2px solid #ddd;
+                  "
+                >
+                  Meal
+                </th>
+                <th
+                  style="
+                    padding: 12px;
+                    text-align: left;
+                    border-bottom: 2px solid #ddd;
+                  "
+                >
+                  Date
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for booking in bookings %}
+              <tr style="border-bottom: 1px solid #eee">
+                <td style="padding: 12px">{{ booking.user_id }}</td>
+                <td style="padding: 12px">
+                  <span
+                    style="
+                      background: linear-gradient(
+                        135deg,
+                        var(--secondary-color),
+                        #f57c00
+                      );
+                      color: white;
+                      padding: 4px 12px;
+                      border-radius: 20px;
+                      font-size: 12px;
+                    "
+                    >{{ booking.meal }}</span
+                  >
+                </td>
+                <td style="padding: 12px">{{ booking.booking_date }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p style="color: #666; padding: 20px; text-align: center">
+            No bookings found.
+          </p>
+          {% endif %}
+        </div>
 
-    <h3>Summary</h3>
+        <div class="admin-section">
+          <h3><i class="fas fa-star"></i> Dish Ratings</h3>
+          {% if dish_stats %}
+          <ul class="admin-list">
+            {% for dish in dish_stats %}
+            <li>
+              <span class="dish-name">{{ dish.dish_name }}</span>
+              <span class="rating">
+                <span class="rating-value">{{ dish.avg_rating|round(1) }}</span>
+                <i class="fas fa-star"></i>
+              </span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p style="color: #666; padding: 20px; text-align: center">
+            No ratings yet.
+          </p>
+          {% endif %}
+        </div>
+        <div class="admin-section">
+          <h3>Analytics</h3>
 
-    <p>
-        <strong>Most liked dish:</strong>
-        {% if most_liked %}
-            {{ most_liked.dish_name }} ({{ "%.2f"|format(most_liked.avg_rating) }})
-        {% else %}
-            No data
-        {% endif %}
-    </p>
+          <canvas id="mealChart" height="100"></canvas>
+          <br /><br />
+          <canvas id="foodChart" height="100"></canvas>
+          <br /><br />
+          <canvas id="ratingChart" height="100"></canvas>
+        </div>
+        <div class="admin-logout">
+          <a href="/logout" class="btn-logout">
+            <i class="fas fa-sign-out-alt"></i> Logout
+          </a>
+        </div>
+      </div>
+    </div>
+    <script>
+    // Meal-wise bookings
+    const mealData = {{ meal_stats|tojson }};
+    new Chart(document.getElementById('mealChart'), {
+        type: 'bar',
+        data: {
+            labels: mealData.map(item => item.meal),
+            datasets: [{
+                label: 'Meal-wise Bookings',
+                data: mealData.map(item => item.count)
+            }]
+        }
+    });
 
-    <p>
-        <strong>Least liked dish:</strong>
-        {% if least_liked %}
-            {{ least_liked.dish_name }} ({{ "%.2f"|format(least_liked.avg_rating) }})
-        {% else %}
-            No data
-        {% endif %}
-    </p>
+    // Veg vs NonVeg
+    const foodData = {{ food_stats|tojson }};
+    new Chart(document.getElementById('foodChart'), {
+        type: 'pie',
+        data: {
+            labels: foodData.map(item => item.food_type),
+            datasets: [{
+                data: foodData.map(item => item.count)
+            }]
+        }
+    });
 
-    <p>
-        <strong>Overall satisfaction score:</strong>
-        {% if overall.overall %}
-            {{ "%.2f"|format(overall.overall) }}
-        {% else %}
-            No data
-        {% endif %}
-    </p>
-
-    <br>
-    <a href="/logout">Logout</a>
-</body>
+    // Dish Ratings
+    const ratingData = {{ dish_stats|tojson }};
+    new Chart(document.getElementById('ratingChart'), {
+        type: 'bar',
+        data: {
+            labels: ratingData.map(item => item.dish_name),
+            datasets: [{
+                label: 'Average Rating',
+                data: ratingData.map(item => item.avg_rating)
+            }]
+        }
+    });
+  </script>
+  </body>
 </html>
