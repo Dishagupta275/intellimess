@@ -1,235 +1,210 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Admin Dashboard - IntelliMess</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='styles.css') }}"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
-  </head>
-
-  <body>
-    <div class="dashboard-wrapper">
-      <nav class="navbar">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+    <style>
+        .guest-breakdown { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+        .guest-tag { background:rgba(255,255,255,0.2); padding:6px 14px; border-radius:20px; font-size:13px; }
+        .guest-tag strong { font-size:16px; display:block; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
         <a href="/admin" class="navbar-brand">
-          <i class="fas fa-utensils"></i>
-          <span>IntelliMess</span>
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
         </a>
         <div class="nav-links">
-          <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <a href="/admin/polls"><i class="fas fa-poll"></i> Manage Polls</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
-      </nav>
+    </nav>
 
-      <div class="admin-container">
+    <div class="admin-container">
         <div class="admin-header">
-          <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
-          <p>Manage bookings, view statistics, and monitor feedback</p>
+            <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+            <p>Manage bookings, view statistics, and monitor feedback</p>
         </div>
 
+        <!-- STAT CARDS -->
         <div class="admin-stats">
-          <div class="stat-card">
-            <div class="stat-icon">
-              <i class="fas fa-calendar-check"></i>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
+                <div class="stat-value">{{ next_meal_count }}</div>
+                <div class="stat-label">Next Meal (incl. guests)</div>
             </div>
-            <div class="stat-value">{{ next_meal_count }}</div>
-            <div class="stat-label">Next Meal Bookings</div>
-          </div>
-          <div class="stat-card">
-            <div
-              class="stat-icon"
-              style="background: linear-gradient(135deg, #ff9800, #f57c00)"
-            >
-              <i class="fas fa-utensils"></i>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#ff9800,#f57c00)">
+                    <i class="fas fa-utensils"></i>
+                </div>
+                <div class="stat-value">{{ bookings|length }}</div>
+                <div class="stat-label">Total Bookings</div>
             </div>
-            <div class="stat-value">{{ bookings|length }}</div>
-            <div class="stat-label">Total Bookings</div>
-          </div>
-          <div class="stat-card">
-            <div
-              class="stat-icon"
-              style="background: linear-gradient(135deg, #9c27b0, #7b1fa2)"
-            >
-              <i class="fas fa-star"></i>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#9c27b0,#7b1fa2)">
+                    <i class="fas fa-star"></i>
+                </div>
+                <div class="stat-value">{{ dish_stats|length }}</div>
+                <div class="stat-label">Dishes Rated</div>
             </div>
-            <div class="stat-value">{{ dish_stats|length }}</div>
-            <div class="stat-label">Dishes Rated</div>
-          </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#5c6bc0,#3949ab)">
+                    <i class="fas fa-poll"></i>
+                </div>
+                <div class="stat-value">{{ open_polls_count }}</div>
+                <div class="stat-label">Active Polls</div>
+            </div>
         </div>
 
-        <div
-          style="
-            background: linear-gradient(
-              135deg,
-              var(--primary-color),
-              var(--primary-light)
-            );
-            padding: 20px;
-            border-radius: 12px;
-            color: white;
-            margin-top: 15px;
-          "
-        >
-          <strong style="font-size: 20px">{{ next_meal }}</strong>
-          <span style="margin: 0 10px">|</span>
-          <span>{{ next_meal_date }}</span>
+        <!-- NEXT MEAL BREAKDOWN -->
+        <div style="background:linear-gradient(135deg,var(--primary-color),var(--primary-light));padding:22px;border-radius:12px;color:white;margin-top:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <strong style="font-size:22px;">{{ next_meal }}</strong>
+                    <span style="margin:0 10px;">|</span>
+                    <span>{{ next_meal_date }}</span>
+                </div>
+                <a href="/admin/polls" style="background:rgba(255,255,255,0.2); color:white; padding:8px 18px; border-radius:20px; text-decoration:none; font-size:13px;">
+                    <i class="fas fa-poll"></i> Manage Polls
+                </a>
+            </div>
 
-          <div style="margin-top: 15px">
-            <div>Total: <strong>{{ next_meal_count }}</strong></div>
-            <div>Veg: {{ veg_count }}</div>
-            <div>Non-Veg: {{ nonveg_count }}</div>
-          </div>
+            <div class="guest-breakdown">
+                <div class="guest-tag">
+                    <strong>{{ next_meal_count }}</strong> Total Meals
+                </div>
+                <div class="guest-tag">
+                    <strong>{{ student_count }}</strong> Students
+                </div>
+                <div class="guest-tag">
+                    <strong>{{ total_guests }}</strong> Guests
+                </div>
+                <div class="guest-tag">
+                    <strong>{{ veg_count }}</strong> Veg
+                </div>
+                <div class="guest-tag">
+                    <strong>{{ nonveg_count }}</strong> Non-Veg
+                </div>
+            </div>
         </div>
 
+        <!-- ALL BOOKINGS -->
         <div class="admin-section">
-          <h3><i class="fas fa-list"></i> All Bookings</h3>
-          {% if bookings %}
-          <table
-            style="width: 100%; border-collapse: collapse; margin-top: 15px"
-          >
-            <thead>
-              <tr style="background: #f5f5f5">
-                <th
-                  style="
-                    padding: 12px;
-                    text-align: left;
-                    border-bottom: 2px solid #ddd;
-                  "
-                >
-                  User ID
-                </th>
-                <th
-                  style="
-                    padding: 12px;
-                    text-align: left;
-                    border-bottom: 2px solid #ddd;
-                  "
-                >
-                  Meal
-                </th>
-                <th
-                  style="
-                    padding: 12px;
-                    text-align: left;
-                    border-bottom: 2px solid #ddd;
-                  "
-                >
-                  Date
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for booking in bookings %}
-              <tr style="border-bottom: 1px solid #eee">
-                <td style="padding: 12px">{{ booking.user_id }}</td>
-                <td style="padding: 12px">
-                  <span
-                    style="
-                      background: linear-gradient(
-                        135deg,
-                        var(--secondary-color),
-                        #f57c00
-                      );
-                      color: white;
-                      padding: 4px 12px;
-                      border-radius: 20px;
-                      font-size: 12px;
-                    "
-                    >{{ booking.meal }}</span
-                  >
-                </td>
-                <td style="padding: 12px">{{ booking.booking_date }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          {% else %}
-          <p style="color: #666; padding: 20px; text-align: center">
-            No bookings found.
-          </p>
-          {% endif %}
+            <h3><i class="fas fa-list"></i> All Bookings</h3>
+            {% if bookings %}
+            <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:14px;">
+                <thead>
+                    <tr style="background:#f5f5f5;">
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Student</th>
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Roll No</th>
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Meal</th>
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Type</th>
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Date</th>
+                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Guests</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for booking in bookings %}
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:12px;">{{ booking.username }}</td>
+                    <td style="padding:12px; color:#888;">{{ booking.roll_no }}</td>
+                    <td style="padding:12px;">
+                        <span style="background:linear-gradient(135deg,var(--secondary-color),#f57c00);color:white;padding:4px 12px;border-radius:20px;font-size:12px;">
+                            {{ booking.meal }}
+                        </span>
+                    </td>
+                    <td style="padding:12px; font-size:13px;">{{ booking.food_type }}</td>
+                    <td style="padding:12px;">{{ booking.booking_date }}</td>
+                    <td style="padding:12px; text-align:center;">
+                        {% if booking.guest_count and booking.guest_count > 0 %}
+                            <span style="background:#e3f2fd; color:#1565c0; padding:3px 10px; border-radius:20px; font-size:12px;">
+                                <i class="fas fa-users"></i> {{ booking.guest_count }} ({{ booking.guest_food_type }})
+                            </span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#666; padding:20px; text-align:center;">No bookings found.</p>
+            {% endif %}
         </div>
 
+        <!-- DISH RATINGS -->
         <div class="admin-section">
-          <h3><i class="fas fa-star"></i> Dish Ratings</h3>
-          {% if dish_stats %}
-          <ul class="admin-list">
-            {% for dish in dish_stats %}
-            <li>
-              <span class="dish-name">{{ dish.dish_name }}</span>
-              <span class="rating">
-                <span class="rating-value">{{ dish.avg_rating|round(1) }}</span>
-                <i class="fas fa-star"></i>
-              </span>
-            </li>
-            {% endfor %}
-          </ul>
-          {% else %}
-          <p style="color: #666; padding: 20px; text-align: center">
-            No ratings yet.
-          </p>
-          {% endif %}
+            <h3><i class="fas fa-star"></i> Dish Ratings</h3>
+            {% if dish_stats %}
+            <ul class="admin-list">
+                {% for dish in dish_stats %}
+                <li>
+                    <span class="dish-name">{{ dish.dish_name }}</span>
+                    <span class="rating">
+                        <span class="rating-value">{{ dish.avg_rating|round(1) }}</span>
+                        <i class="fas fa-star"></i>
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p style="color:#666; padding:20px; text-align:center;">No ratings yet.</p>
+            {% endif %}
         </div>
-        <div class="admin-section">
-          <h3>Analytics</h3>
 
-          <canvas id="mealChart" height="100"></canvas>
-          <br /><br />
-          <canvas id="foodChart" height="100"></canvas>
-          <br /><br />
-          <canvas id="ratingChart" height="100"></canvas>
+        <!-- ANALYTICS CHARTS -->
+        <div class="admin-section">
+            <h3><i class="fas fa-chart-bar"></i> Analytics</h3>
+            <canvas id="mealChart" height="100"></canvas>
+            <br/><br/>
+            <canvas id="foodChart" height="100"></canvas>
+            <br/><br/>
+            <canvas id="ratingChart" height="100"></canvas>
         </div>
+
         <div class="admin-logout">
-          <a href="/logout" class="btn-logout">
-            <i class="fas fa-sign-out-alt"></i> Logout
-          </a>
+            <a href="/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
-      </div>
     </div>
-    <script>
-    // Meal-wise bookings
-    const mealData = {{ meal_stats|tojson }};
-    new Chart(document.getElementById('mealChart'), {
-        type: 'bar',
-        data: {
-            labels: mealData.map(item => item.meal),
-            datasets: [{
-                label: 'Meal-wise Bookings',
-                data: mealData.map(item => item.count)
-            }]
-        }
-    });
+</div>
 
-    // Veg vs NonVeg
-    const foodData = {{ food_stats|tojson }};
-    new Chart(document.getElementById('foodChart'), {
-        type: 'pie',
-        data: {
-            labels: foodData.map(item => item.food_type),
-            datasets: [{
-                data: foodData.map(item => item.count)
-            }]
-        }
-    });
+<script>
+const mealData = {{ meal_stats|tojson }};
+new Chart(document.getElementById('mealChart'), {
+    type: 'bar',
+    data: {
+        labels: mealData.map(i => i.meal),
+        datasets: [{label: 'Meal-wise Bookings', data: mealData.map(i => i.count),
+            backgroundColor: ['#42a5f5','#66bb6a','#ffa726','#ab47bc']}]
+    },
+    options: {plugins:{legend:{display:false}}}
+});
 
-    // Dish Ratings
-    const ratingData = {{ dish_stats|tojson }};
-    new Chart(document.getElementById('ratingChart'), {
-        type: 'bar',
-        data: {
-            labels: ratingData.map(item => item.dish_name),
-            datasets: [{
-                label: 'Average Rating',
-                data: ratingData.map(item => item.avg_rating)
-            }]
-        }
-    });
-  </script>
-  </body>
+const foodData = {{ food_stats|tojson }};
+new Chart(document.getElementById('foodChart'), {
+    type: 'doughnut',
+    data: {
+        labels: foodData.map(i => i.food_type),
+        datasets: [{data: foodData.map(i => i.count),
+            backgroundColor: ['#66bb6a','#ef5350']}]
+    },
+    options: {plugins:{title:{display:true,text:'Veg vs Non-Veg'}}}
+});
+
+const ratingData = {{ dish_stats|tojson }};
+new Chart(document.getElementById('ratingChart'), {
+    type: 'bar',
+    data: {
+        labels: ratingData.map(i => i.dish_name),
+        datasets: [{label: 'Average Rating', data: ratingData.map(i => i.avg_rating),
+            backgroundColor: '#5c6bc0'}]
+    },
+    options: {scales:{y:{min:0,max:5}}}
+});
+</script>
+</body>
 </html>

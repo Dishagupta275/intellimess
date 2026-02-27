@@ -8,74 +8,101 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <div class="dashboard-wrapper">
-        <nav class="navbar">
-            <a href="/student" class="navbar-brand">
-                <i class="fas fa-utensils"></i>
-                <span>IntelliMess</span>
-            </a>
-            <div class="nav-links">
-                <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
-                <a href="/menu"><i class="fas fa-list"></i> Menu</a>
-                <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
-                <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-            </div>
-        </nav>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand">
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+            <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+            <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
 
-        <div class="booking-container">
-            <div class="booking-card">
-                <h2><i class="fas fa-calendar-plus"></i> Meal Booking</h2>
-                
-                <form method="POST" action="/book" class="booking-form">
-                    <div class="booking-form-group">
-                        <label for="meal">Select Meal</label>
-                        <select name="meal" id="meal" required>
-                            <option value="Breakfast">Breakfast</option>
-                            <option value="Lunch">Lunch</option>
-                            <option value="Snacks">Snacks</option>
-                            <option value="Dinner">Dinner</option>
-                        </select>
-                    </div>
+    <div class="booking-container">
+        <div class="booking-card">
+            <h2><i class="fas fa-calendar-plus"></i> Meal Booking</h2>
 
-                    <div class="booking-form-group">
-                        <label for="food_type">Food Type</label>
-                        <select name="food_type" id="food_type">
-                            <option value="Veg">Veg</option>
-                            <option value="Non-Veg">Non-Veg</option>
-                        </select>
-                    </div>
-
-                    <div class="booking-form-group">
-                        <label for="date">Booking Date</label>
-                        <input type="date" name="date" id="date" required>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-check"></i> Book Meal
-                    </button>
-                </form>
-
-                <div style="text-align: center; margin-top: 20px;">
-                    <a href="/student" class="back-link">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
-                    </a>
+            <form method="POST" action="/book" class="booking-form">
+                <div class="booking-form-group">
+                    <label for="meal">Select Meal</label>
+                    <select name="meal" id="meal" required>
+                        <option value="Breakfast">Breakfast</option>
+                        <option value="Lunch">Lunch</option>
+                        <option value="Snacks">Snacks</option>
+                        <option value="Dinner">Dinner</option>
+                    </select>
                 </div>
+
+                <div class="booking-form-group">
+                    <label for="food_type">Food Type</label>
+                    <select name="food_type" id="food_type">
+                        <option value="Veg">Veg</option>
+                        <option value="Non-Veg">Non-Veg</option>
+                    </select>
+                </div>
+
+                <div class="booking-form-group">
+                    <label for="date">Booking Date</label>
+                    <input type="date" name="date" id="date" required>
+                </div>
+
+                <!-- Guest Booking Section -->
+                <div class="booking-form-group" style="background:#f9f9f9; border:1px solid #e0e0e0; padding:15px; border-radius:10px; margin-top:10px;">
+                    <label style="font-weight:600; font-size:15px;">
+                        <input type="checkbox" name="bring_guest" id="bring_guest" onchange="toggleGuest(this)">
+                        &nbsp;<i class="fas fa-users"></i> Bring a Guest
+                    </label>
+
+                    <div id="guest_section" style="display:none; margin-top:15px;">
+                        <div class="booking-form-group">
+                            <label for="guest_count">Number of Guests (max 10)</label>
+                            <input type="number" name="guest_count" id="guest_count"
+                                   min="1" max="10" value="1"
+                                   style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
+                        </div>
+                        <div class="booking-form-group">
+                            <label for="guest_food_type">Guest Food Type</label>
+                            <select name="guest_food_type" id="guest_food_type"
+                                    style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
+                                <option value="Veg">Veg</option>
+                                <option value="Non-Veg">Non-Veg</option>
+                            </select>
+                        </div>
+                        <p style="font-size:13px; color:#888; margin-top:5px;">
+                            <i class="fas fa-info-circle"></i> Guest meals are counted in preparation totals.
+                        </p>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-check"></i> Book Meal
+                </button>
+            </form>
+
+            <div style="text-align:center; margin-top:20px;">
+                <a href="/student" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        const dateInput = document.getElementById("date");
-        const today = new Date();
-        const tomorrow = new Date();
-        tomorrow.setDate(today.getDate() + 1);
+<script>
+    const dateInput = document.getElementById("date");
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    function formatDate(d) { return d.toISOString().split("T")[0]; }
+    dateInput.min = formatDate(today);
+    dateInput.max = formatDate(tomorrow);
+    dateInput.value = formatDate(today);
 
-        function formatDate(d) {
-            return d.toISOString().split("T")[0];
-        }
-
-        dateInput.min = formatDate(today);
-        dateInput.max = formatDate(tomorrow);
-    </script>
+    function toggleGuest(cb) {
+        document.getElementById("guest_section").style.display = cb.checked ? "block" : "none";
+    }
+</script>
 </body>
 </html>

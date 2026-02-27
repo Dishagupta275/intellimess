@@ -8,52 +8,54 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <div class="dashboard-wrapper">
-        <nav class="navbar">
-            <a href="/student" class="navbar-brand">
-                <i class="fas fa-utensils"></i>
-                <span>IntelliMess</span>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand">
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book Meal</a>
+            <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+            <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+            <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <div class="welcome-card">
+            <h2>Welcome, {{ username }}!</h2>
+            <p>Manage your mess bookings, view menus, give feedback, and vote in polls.</p>
+        </div>
+
+        <div class="dashboard-links">
+            <a href="/booking" class="action-card book">
+                <i class="fas fa-calendar-plus"></i>
+                <h3>Book Meal</h3>
+                <p>Reserve your meals — guests welcome!</p>
             </a>
-            <div class="nav-links">
-                <a href="/booking"><i class="fas fa-calendar-plus"></i> Book Meal</a>
-                <a href="/menu"><i class="fas fa-list"></i> Menu</a>
-                <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
-                <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-            </div>
-        </nav>
-
-        <div class="dashboard-container">
-            <div class="welcome-card">
-                <h2>Welcome, {{ username }}!</h2>
-                <p>Manage your mess bookings, view menus, and give feedback all in one place.</p>
-            </div>
-
-            <div class="dashboard-links">
-                <a href="/booking" class="action-card book">
-                    <i class="fas fa-calendar-plus"></i>
-                    <h3>Book Meal</h3>
-                    <p>Reserve your meals for today or tomorrow</p>
-                </a>
-
-                <a href="/menu" class="action-card menu">
-                    <i class="fas fa-list"></i>
-                    <h3>View Menu</h3>
-                    <p>Check upcoming meals for the week</p>
-                </a>
-
-                <a href="/feedback" class="action-card feedback">
-                    <i class="fas fa-comment-dots"></i>
-                    <h3>Give Feedback</h3>
-                    <p>Rate your meals and help us improve</p>
-                </a>
-
-                <a href="/logout" class="action-card logout">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <h3>Logout</h3>
-                    <p>Sign out of your account</p>
-                </a>
-            </div>
+            <a href="/menu" class="action-card menu">
+                <i class="fas fa-list"></i>
+                <h3>View Menu</h3>
+                <p>Check upcoming meals for the week</p>
+            </a>
+            <a href="/feedback" class="action-card feedback">
+                <i class="fas fa-comment-dots"></i>
+                <h3>Give Feedback</h3>
+                <p>Rate your meals and help us improve</p>
+            </a>
+            <a href="/polls" class="action-card" style="background:linear-gradient(135deg,#5c6bc0,#3949ab);">
+                <i class="fas fa-poll"></i>
+                <h3>Menu Polls</h3>
+                <p>Vote on upcoming dish options</p>
+            </a>
+            <a href="/logout" class="action-card logout">
+                <i class="fas fa-sign-out-alt"></i>
+                <h3>Logout</h3>
+                <p>Sign out of your account</p>
+            </a>
         </div>
     </div>
+</div>
 </body>
 </html>

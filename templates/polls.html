@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu Polls - IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .polls-container { max-width: 700px; margin: 30px auto; padding: 0 20px; }
+        .poll-card {
+            background: white; border-radius: 14px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            padding: 24px; margin-bottom: 24px;
+        }
+        .poll-meta { font-size: 13px; color: #888; margin-bottom: 12px; }
+        .poll-question { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: #333; }
+        .poll-option {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px; border: 2px solid #e0e0e0;
+            border-radius: 10px; margin-bottom: 10px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .poll-option:hover { border-color: var(--primary-color, #2196f3); background: #f0f7ff; }
+        .poll-option input[type=radio] { accent-color: var(--primary-color, #2196f3); width:18px; height:18px; }
+        .vote-bar-wrap { flex: 1; }
+        .vote-bar-bg { background: #eee; border-radius: 999px; height: 8px; margin-top: 4px; }
+        .vote-bar { background: linear-gradient(90deg, #2196f3, #64b5f6); height: 8px; border-radius: 999px; transition: width 0.5s; }
+        .vote-pct { font-size: 12px; color: #888; }
+        .voted-badge { font-size: 12px; background: #e8f5e9; color: #388e3c; padding: 2px 8px; border-radius: 20px; }
+        .section-title { font-size: 20px; font-weight: 700; margin: 30px 0 16px; color: #444; }
+        .empty-msg { text-align: center; color: #aaa; padding: 40px 0; }
+        .btn-vote { background: linear-gradient(135deg, #5c6bc0, #3949ab); color: white; border: none; padding: 12px 28px; border-radius: 30px; font-size: 15px; cursor: pointer; margin-top: 8px; }
+        .btn-vote:hover { opacity: 0.9; }
+        .winner-option { border-color: #43a047 !important; background: #f1f8e9; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand">
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book Meal</a>
+            <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="polls-container">
+        <div class="section-title"><i class="fas fa-poll"></i> Active Polls</div>
+
+        {% if polls %}
+            {% for poll in polls %}
+            <div class="poll-card">
+                <div class="poll-meta">
+                    <i class="fas fa-utensils"></i> {{ poll.meal }} &nbsp;|&nbsp;
+                    <i class="fas fa-calendar"></i> {{ poll.poll_date }} &nbsp;|&nbsp;
+                    <i class="fas fa-clock"></i> Closes at {{ poll.closing_time }}
+                </div>
+                <div class="poll-question">{{ poll.question }}</div>
+
+                {% if poll.user_voted %}
+                    <!-- Show results after voting -->
+                    <div style="margin-bottom:8px;">
+                        <span class="voted-badge"><i class="fas fa-check-circle"></i> You've voted</span>
+                    </div>
+                    {% set total = poll.options | sum(attribute='vote_count') %}
+                    {% set max_votes = poll.options | map(attribute='vote_count') | max %}
+                    {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
+                    {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
+                    {% set is_leading = (option.vote_count == max_votes and max_votes > 0) %}
+                    <div class="poll-option" style="cursor:default; {% if is_leading %}border-color:#43a047; background:#f1f8e9;{% endif %}">
+                        <div class="vote-bar-wrap">
+                            <div style="display:flex; justify-content:space-between;">
+                                <span>{{ option.option_text }}</span>
+                                <span style="display:flex; gap:6px; align-items:center;">
+                                    {% if option.id == poll.user_vote_option %}
+                                        <span class="voted-badge"><i class="fas fa-check"></i> Your vote</span>
+                                    {% endif %}
+                                    {% if is_leading %}
+                                        <span style="color:#43a047; font-weight:700;">🏆 Leading</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div class="vote-bar-bg">
+                                <div class="vote-bar" style="width:{{ pct }}%"></div>
+                            </div>
+                            <span class="vote-pct">{{ pct }}% ({{ option.vote_count }} votes)</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                {% else %}
+                    <!-- Voting form -->
+                    <form method="POST" action="/polls/vote">
+                        <input type="hidden" name="poll_id" value="{{ poll.id }}">
+                        {% for option in poll.options %}
+                        <label class="poll-option">
+                            <input type="radio" name="option_id" value="{{ option.id }}" required>
+                            <span>{{ option.option_text }}</span>
+                        </label>
+                        {% endfor %}
+                        <button type="submit" class="btn-vote">
+                            <i class="fas fa-vote-yea"></i> Submit Vote
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-msg">
+                <i class="fas fa-inbox" style="font-size:40px; display:block; margin-bottom:10px;"></i>
+                No active polls right now. Check back later!
+            </div>
+        {% endif %}
+
+        {% if past_polls %}
+        <div class="section-title"><i class="fas fa-history"></i> Recent Poll Results</div>
+        {% for poll in past_polls %}
+        <div class="poll-card" style="opacity:0.85;">
+            <div class="poll-meta"><i class="fas fa-lock"></i> Closed &nbsp;|&nbsp; {{ poll.meal }} &nbsp;|&nbsp; {{ poll.poll_date }}</div>
+            <div class="poll-question">{{ poll.question }}</div>
+            {% set total = poll.options | sum(attribute='vote_count') %}
+            {% set max_votes = poll.options | map(attribute='vote_count') | max %}
+            {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
+            {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
+            {% set is_winner = (option.vote_count == max_votes and max_votes > 0) %}
+            <div class="poll-option {% if is_winner %}winner-option{% endif %}" style="cursor:default;">
+                <div class="vote-bar-wrap">
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>{{ option.option_text }}</span>
+                        {% if is_winner %}<span style="color:#43a047; font-weight:700;">🏆 Winner</span>{% endif %}
+                    </div>
+                    <div class="vote-bar-bg"><div class="vote-bar" style="width:{{ pct }}%"></div></div>
+                    <span class="vote-pct">{{ pct }}% ({{ option.vote_count }} votes)</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>
