@@ -3,88 +3,221 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meal Feedback - IntelliMess</title>
+    <title>Meal Feedback – IntelliMess</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
+    <style>
+        .feedback-container { max-width:800px; margin:30px auto; padding:0 20px 60px; }
 
+        .feedback-header { text-align:center; color:#fff; margin-bottom:30px; }
+        .feedback-header h1 { font-size:32px; font-weight:700; margin-bottom:8px; }
+        .feedback-header p  { font-size:15px; opacity:.9; }
+
+        /* Card — same style as menu-card / poll-card */
+        .feedback-card {
+            background:#fff; border-radius:16px; padding:25px;
+            box-shadow:0 4px 15px rgba(0,0,0,.1);
+            margin-bottom:20px; animation:fadeIn .5s ease;
+            transition:all .3s ease;
+        }
+        .feedback-card:hover { transform:translateY(-3px); box-shadow:0 8px 25px rgba(0,0,0,.15); }
+
+        .feedback-card-header {
+            display:flex; align-items:center; justify-content:space-between;
+            margin-bottom:18px; padding-bottom:16px;
+            border-bottom:2px solid #f0f0f0; flex-wrap:wrap; gap:8px;
+        }
+        .meal-badge {
+            color:#fff; padding:5px 14px; border-radius:20px;
+            font-size:13px; font-weight:600;
+            display:inline-flex; align-items:center; gap:6px;
+        }
+        .meal-Breakfast { background:linear-gradient(135deg,#ff9800,#f57c00); }
+        .meal-Lunch     { background:linear-gradient(135deg,#4CAF50,#388E3C); }
+        .meal-Snacks    { background:linear-gradient(135deg,#9c27b0,#7b1fa2); }
+        .meal-Dinner    { background:linear-gradient(135deg,#1976d2,#1565c0); }
+
+        .date-chip { font-size:13px; color:#888; display:flex; align-items:center; gap:5px; }
+
+        /* Dish rows */
+        .dish-item {
+            border:2px solid #f0f0f0; border-radius:12px;
+            padding:16px; margin-bottom:12px; transition:all .2s;
+        }
+        .dish-item.active { border-color:var(--primary-color); background:#f0faf0; }
+
+        .dish-item-top {
+            display:flex; align-items:center; gap:12px; cursor:pointer;
+        }
+        .dish-checkbox {
+            width:20px; height:20px; accent-color:var(--primary-color);
+            cursor:pointer; flex-shrink:0;
+        }
+        .dish-name-label { font-weight:600; font-size:15px; color:#333; }
+        .dish-name-hint  { font-size:12px; color:#aaa; margin-left:auto; }
+
+        /* Rating stars */
+        .rating-section { margin-top:14px; padding-top:14px; border-top:1px dashed #ddd; }
+        .stars-row { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+        .star-label {
+            display:flex; flex-direction:column; align-items:center;
+            cursor:pointer; padding:8px 14px; border:2px solid #e0e0e0;
+            border-radius:10px; transition:all .2s; font-size:13px; color:#888;
+            user-select:none;
+        }
+        .star-label i { font-size:20px; margin-bottom:4px; color:#ddd; transition:all .2s; }
+        .star-label input[type=radio] { display:none; }
+        .star-label:hover, .star-label.selected {
+            border-color:var(--secondary-color);
+            background:#fff8e1;
+        }
+        .star-label:hover i, .star-label.selected i { color:#ffc107; }
+        .star-1.selected i { color:#ef5350; }
+        .star-2.selected i { color:#ff9800; }
+        .star-3.selected i { color:#ffc107; }
+        .star-4.selected i { color:#8bc34a; }
+        .star-5.selected i { color:#4CAF50; }
+
+        .comment-box {
+            width:100%; padding:12px 14px; border:2px solid #e0e0e0;
+            border-radius:10px; font-family:'Poppins',sans-serif; font-size:14px;
+            resize:vertical; min-height:70px; transition:all .3s;
+            box-sizing:border-box;
+        }
+        .comment-box:focus { outline:none; border-color:var(--primary-color); box-shadow:0 0 0 4px rgba(76,175,80,.1); }
+        .comment-label { font-size:13px; color:#888; margin-bottom:6px; display:block; }
+
+        /* Submit button — same as booking */
+        .btn-submit {
+            display:inline-flex; align-items:center; justify-content:center; gap:8px;
+            padding:13px 30px; border:none; border-radius:10px;
+            font-size:15px; font-weight:600; font-family:'Poppins',sans-serif;
+            cursor:pointer; transition:all .3s ease; width:100%; margin-top:8px;
+            background:linear-gradient(135deg,var(--primary-color),var(--primary-dark));
+            color:#fff; box-shadow:0 4px 15px rgba(76,175,80,.3);
+        }
+        .btn-submit:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(76,175,80,.4); }
+
+        /* Empty state */
+        .empty-state {
+            text-align:center; color:#bbb; padding:50px 20px;
+            background:#fff; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,.08);
+        }
+        .empty-state i { font-size:48px; display:block; margin-bottom:14px; }
+
+        .back-link { display:inline-flex; align-items:center; gap:8px; color:#fff; text-decoration:none; margin-top:10px; font-weight:500; transition:all .3s; }
+        .back-link:hover { color:var(--primary-light); transform:translateX(-5px); }
+    </style>
+</head>
 <body>
 <div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+            <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+            <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
 
     <div class="feedback-container">
-        <div class="feedback-card">
-            <h2><i class="fas fa-comment-dots"></i> Give Feedback</h2>
+        <div class="feedback-header">
+            <h1><i class="fas fa-comment-dots"></i> Meal Feedback</h1>
+            <p>Rate your meals and share comments — your feedback shapes the menu!</p>
+        </div>
 
-            {% if feedback_data %}
-                {% for item in feedback_data %}
+        {% if feedback_data %}
+            {% for item in feedback_data %}
+            <div class="feedback-card">
 
-                <div class="feedback-meal-header">
-                    <i class="fas fa-utensils"></i>
-                    <h3>{{ item.meal }}</h3>
+                <div class="feedback-card-header">
+                    <span class="meal-badge meal-{{ item.meal }}">
+                        <i class="fas fa-utensils"></i> {{ item.meal }}
+                    </span>
+                    <span class="date-chip">
+                        <i class="fas fa-calendar"></i> {{ item.booking_date if item.booking_date else '' }}
+                    </span>
                 </div>
 
                 <form method="POST" action="/submit_feedback">
                     <input type="hidden" name="booking_id" value="{{ item.booking_id }}">
 
                     {% for dish in item.dishes %}
-                    <div class="dish-feedback-item">
+                    <div class="dish-item" id="dish_wrap_{{ dish.id }}">
 
-                        <h4>{{ dish.dish_name }}</h4>
-
-                        <!-- Consumption Checkbox -->
-                        <label>
-                            <input type="checkbox"
+                        <!-- Dish checkbox row -->
+                        <div class="dish-item-top" onclick="toggleDish({{ dish.id }})">
+                            <input class="dish-checkbox" type="checkbox"
                                    name="consumed_{{ dish.id }}"
-                                   onclick="toggleRating({{ dish.id }})">
-                            I consumed this dish
-                        </label>
+                                   id="cb_{{ dish.id }}"
+                                   onclick="event.stopPropagation(); toggleDish({{ dish.id }})">
+                            <span class="dish-name-label">{{ dish.dish_name }}</span>
+                            <span class="dish-name-hint">Tap to rate</span>
+                        </div>
 
-                        <!-- Rating Section -->
-                        <div id="rating_section_{{ dish.id }}" style="display:none; margin-top:10px;">
-
-                            <select name="rating_{{ dish.id }}">
-                                <option value="">Select Rating</option>
-                                <option value="5">5 - Excellent</option>
-                                <option value="4">4 - Very Good</option>
-                                <option value="3">3 - Average</option>
-                                <option value="2">2 - Poor</option>
-                                <option value="1">1 - Very Poor</option>
-                            </select>
-
-                            <br><br>
-
-                            <textarea name="comment_{{ dish.id }}"
-                                      rows="2"
-                                      placeholder="Optional comment"></textarea>
+                        <!-- Rating + comment (hidden until checked) -->
+                        <div id="rating_section_{{ dish.id }}" style="display:none;">
+                            <div class="rating-section">
+                                <div class="stars-row" id="stars_{{ dish.id }}">
+                                    {% for val, label in [(1,'Very Poor'),(2,'Poor'),(3,'Average'),(4,'Very Good'),(5,'Excellent')] %}
+                                    <label class="star-label star-{{ val }}" id="star_{{ dish.id }}_{{ val }}"
+                                           onclick="selectStar({{ dish.id }}, {{ val }})">
+                                        <input type="radio" name="rating_{{ dish.id }}" value="{{ val }}">
+                                        <i class="fas fa-star"></i>
+                                        {{ label }}
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <label class="comment-label"><i class="fas fa-pen"></i> Add a comment (optional)</label>
+                                <textarea class="comment-box"
+                                          name="comment_{{ dish.id }}"
+                                          placeholder="e.g. Too oily, needed more salt, was very fresh..."></textarea>
+                            </div>
                         </div>
 
                     </div>
                     {% endfor %}
 
-                    <button type="submit" class="feedback-submit-btn">
-                        Submit Feedback
+                    <button type="submit" class="btn-submit">
+                        <i class="fas fa-paper-plane"></i> Submit Feedback
                     </button>
                 </form>
 
-                <hr>
+            </div>
+            {% endfor %}
 
-                {% endfor %}
-            {% else %}
-                <p>No completed meals available for feedback.</p>
-            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-check-circle" style="color:#4CAF50;"></i>
+                <strong style="font-size:17px;color:#999;">No pending feedback</strong>
+                <p style="margin-top:8px;font-size:14px;">
+                    You're all caught up! Feedback is available for meals from the last 3 days, after the meal time has passed.
+                </p>
+            </div>
+        {% endif %}
 
-        </div>
+        <a href="/student" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
     </div>
-
 </div>
 
 <script>
-function toggleRating(id) {
-    const section = document.getElementById("rating_section_" + id);
-    section.style.display =
-        section.style.display === "none" ? "block" : "none";
+function toggleDish(id) {
+    const cb      = document.getElementById('cb_' + id);
+    const section = document.getElementById('rating_section_' + id);
+    const wrap    = document.getElementById('dish_wrap_' + id);
+    cb.checked = !cb.checked;
+    section.style.display = cb.checked ? 'block' : 'none';
+    wrap.classList.toggle('active', cb.checked);
+}
+
+function selectStar(dishId, val) {
+    for (let i = 1; i <= 5; i++) {
+        const lbl = document.getElementById('star_' + dishId + '_' + i);
+        if (lbl) lbl.classList.toggle('selected', i === val);
+    }
 }
 </script>
-
 </body>
 </html>

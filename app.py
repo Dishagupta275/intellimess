@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, Response
 import mysql.connector
 import os
 from datetime import datetime, timedelta
+
+
 
 app = Flask(__name__)
 app.secret_key = "intellimess_secret"
@@ -200,10 +202,11 @@ def feedback():
     meal_times = {"Breakfast": 7, "Lunch": 12, "Snacks": 16, "Dinner": 19}
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    three_days_ago = today - timedelta(days=3)
     cursor.execute("""
         SELECT id, meal, food_type, booking_date FROM bookings
-        WHERE user_id = %s AND booking_date <= %s
-    """, (user_id, today))
+        WHERE user_id = %s AND booking_date <= %s AND booking_date >= %s
+    """, (user_id, today, three_days_ago))
     bookings = cursor.fetchall()
     feedback_data = []
     for booking in bookings:
@@ -235,7 +238,7 @@ def feedback():
                 WHERE wm.day_of_week = %s AND wm.meal = %s
             """, (day_name, meal))
         dishes = cursor.fetchall()
-        feedback_data.append({"booking_id": booking_id, "meal": meal, "dishes": dishes})
+        feedback_data.append({"booking_id": booking_id, "meal": meal, "dishes": dishes, "booking_date": booking_date})
     cursor.close()
     conn.close()
     return render_template("feedback.html", feedback_data=feedback_data)
@@ -549,6 +552,54 @@ def vote_poll():
     conn.close()
     return "<script>alert('Vote submitted successfully!'); window.location.href='/polls';</script>"
 
+# ================================================================
+# ----------------  SENTIMENT ANALYSIS HELPER  ------------------
+# ================================================================
+def analyze_sentiment(text):
+    """
+    Rule-based sentiment scorer — no external ML library needed.
+    Returns: 'Positive', 'Negative', or 'Neutral'  + a score -1..+1
+    """
+    if not text or not text.strip():
+        return 'Neutral', 0.0
+
+    text_lower = text.lower()
+
+    positive_words = [
+        'good','great','excellent','amazing','delicious','tasty','loved',
+        'fantastic','wonderful','nice','perfect','enjoyed','fresh','hot',
+        'crispy','yummy','best','awesome','superb','happy','satisfied',
+        'well','better','clean','quality','flavour','flavor','rich','soft'
+    ]
+    negative_words = [
+        'bad','poor','terrible','awful','horrible','disgusting','cold',
+        'stale','overcooked','undercooked','oily','bland','worst','hate',
+        'unhappy','disappointed','tasteless','hard','burnt','raw','dirty',
+        'spicy','less','no','not','never','complaint','issue','problem',
+        'delay','late','slow','waste','watery'
+    ]
+    negation_words = ['not','no','never','neither','nor','without']
+
+    words = text_lower.split()
+    score = 0
+    i = 0
+    while i < len(words):
+        word = words[i].strip('.,!?;:')
+        negated = (i > 0 and words[i-1].strip('.,!?;:') in negation_words)
+        if word in positive_words:
+            score += -1 if negated else +1
+        elif word in negative_words:
+            score += +1 if negated else -1
+        i += 1
+
+    if score > 0:
+        return 'Positive', min(score / 3, 1.0)
+    elif score < 0:
+        return 'Negative', max(score / 3, -1.0)
+    else:
+        return 'Neutral', 0.0
+
+
 # ---------------- ADMIN DASHBOARD ----------------
 @app.route('/admin')
 def admin():
@@ -593,26 +644,151 @@ def admin():
     veg_count = int(ms['veg_students'] or 0) + int(ms['veg_guests'] or 0)
     nonveg_count = int(ms['nonveg_students'] or 0) + int(ms['nonveg_guests'] or 0)
 
+    # ---- DISH RATINGS + SENTIMENT ANALYSIS ----
     cursor.execute("""
-        SELECT d.dish_name, AVG(f.rating) as avg_rating FROM feedback f
-        JOIN dishes d ON f.dish_id = d.id GROUP BY d.dish_name ORDER BY avg_rating DESC
+        SELECT d.dish_name,
+               AVG(f.rating) as avg_rating,
+               COUNT(f.id) as total_reviews,
+               GROUP_CONCAT(f.comment SEPARATOR '||||') as all_comments
+        FROM feedback f
+        JOIN dishes d ON f.dish_id = d.id
+        GROUP BY d.dish_name
+        ORDER BY avg_rating DESC
     """)
-    dish_stats = cursor.fetchall() or []
+    raw_dish_stats = cursor.fetchall() or []
+
+    dish_stats = []
+    for dish in raw_dish_stats:
+        comments_raw = dish['all_comments'] or ''
+        comments = [c.strip() for c in comments_raw.split('||||') if c.strip()]
+        pos = neg = neu = 0
+        notable_positive = []
+        notable_negative = []
+        for c in comments:
+            sentiment, score = analyze_sentiment(c)
+            if sentiment == 'Positive':
+                pos += 1
+                if len(notable_positive) < 2:
+                    notable_positive.append(c)
+            elif sentiment == 'Negative':
+                neg += 1
+                if len(notable_negative) < 2:
+                    notable_negative.append(c)
+            else:
+                neu += 1
+        total_c = pos + neg + neu
+        sentiment_pct = {
+            'positive': round(pos / total_c * 100) if total_c else 0,
+            'negative': round(neg / total_c * 100) if total_c else 0,
+            'neutral': round(neu / total_c * 100) if total_c else 0,
+        }
+        # Overall label
+        if total_c == 0:
+            overall_sentiment = 'No comments'
+        elif pos >= neg and pos >= neu:
+            overall_sentiment = 'Mostly Positive'
+        elif neg >= pos and neg >= neu:
+            overall_sentiment = 'Needs Improvement'
+        else:
+            overall_sentiment = 'Mixed'
+
+        dish_stats.append({
+            'dish_name': dish['dish_name'],
+            'avg_rating': dish['avg_rating'],
+            'total_reviews': dish['total_reviews'],
+            'sentiment': overall_sentiment,
+            'sentiment_pct': sentiment_pct,
+            'notable_positive': notable_positive,
+            'notable_negative': notable_negative,
+            'comment_count': total_c,
+        })
+
     most_liked = dish_stats[0] if dish_stats else None
     least_liked = dish_stats[-1] if dish_stats else None
 
     cursor.execute("SELECT AVG(rating) as overall FROM feedback")
     overall_row = cursor.fetchone()
-    overall = overall_row['overall'] if overall_row and overall_row['overall'] else 0
+    overall = round(float(overall_row['overall']), 2) if overall_row and overall_row['overall'] else 0
 
+    # ---- BOOKINGS OVER LAST 7 DAYS (trend chart) ----
+    cursor.execute("""
+        SELECT DATE(booking_date) as bdate, COUNT(*) as count
+        FROM bookings
+        WHERE booking_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        GROUP BY DATE(booking_date)
+        ORDER BY bdate ASC
+    """)
+    booking_trend = cursor.fetchall() or []
+
+    # ---- MEAL-WISE BOOKINGS ----
     cursor.execute("SELECT meal, COUNT(*) as count FROM bookings GROUP BY meal")
     meal_stats = cursor.fetchall() or []
 
+    # ---- VEG vs NONVEG ----
     cursor.execute("SELECT food_type, COUNT(*) as count FROM bookings GROUP BY food_type")
     food_stats = cursor.fetchall() or []
 
+    # ---- RATING DISTRIBUTION (how many 1s, 2s, 3s, 4s, 5s) ----
+    cursor.execute("""
+        SELECT rating, COUNT(*) as count FROM feedback
+        GROUP BY rating ORDER BY rating ASC
+    """)
+    rating_dist_raw = cursor.fetchall() or []
+    rating_dist = {str(r['rating']): r['count'] for r in rating_dist_raw}
+
+    # ---- MEAL SATISFACTION SCORES ----
+    cursor.execute("""
+        SELECT wm.meal, AVG(f.rating) as avg_rating, COUNT(f.id) as total
+        FROM feedback f
+        JOIN bookings b ON f.booking_id = b.id
+        JOIN weekly_menu wm ON wm.meal = b.meal
+        GROUP BY wm.meal
+        ORDER BY avg_rating DESC
+    """)
+    meal_satisfaction = cursor.fetchall() or []
+
+    # ---- FEEDBACK PARTICIPATION RATE ----
+    cursor.execute("SELECT COUNT(*) as total FROM bookings")
+    total_bookings = cursor.fetchone()['total'] or 1
+    cursor.execute("SELECT COUNT(DISTINCT booking_id) as fb FROM feedback")
+    total_feedback_bookings = cursor.fetchone()['fb'] or 0
+    feedback_rate = round(total_feedback_bookings / total_bookings * 100, 1)
+
     cursor.execute("SELECT COUNT(*) as cnt FROM polls WHERE status='open'")
     open_polls_count = cursor.fetchone()['cnt']
+
+    # ---- BOOKING HEATMAP (day x meal) ----
+    cursor.execute("""
+        SELECT DAYNAME(booking_date) as day_name, meal, COUNT(*) as count
+        FROM bookings
+        GROUP BY DAYNAME(booking_date), meal
+    """)
+    heatmap_raw = cursor.fetchall() or []
+    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
+    heatmap = {d: {m: 0 for m in meals_order} for d in days_order}
+    heatmap_max = 1
+    for row in heatmap_raw:
+        d, m, c = row['day_name'], row['meal'], row['count']
+        if d in heatmap and m in heatmap[d]:
+            heatmap[d][m] = c
+            if c > heatmap_max:
+                heatmap_max = c
+
+    # ---- DISH COMEBACK SUGGESTIONS ----
+    # Dishes rated >= 4.0 avg but not served in last 14 days
+    cursor.execute("""
+        SELECT d.dish_name, AVG(f.rating) as avg_rating,
+               MAX(b.booking_date) as last_served
+        FROM feedback f
+        JOIN dishes d ON f.dish_id = d.id
+        JOIN bookings b ON f.booking_id = b.id
+        GROUP BY d.dish_name
+        HAVING avg_rating >= 4.0
+           AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        ORDER BY avg_rating DESC
+    """)
+    comeback_dishes = cursor.fetchall() or []
 
     cursor.close()
     conn.close()
@@ -624,8 +800,250 @@ def admin():
         next_meal_count=next_meal_count, student_count=student_count,
         total_guests=total_guests, veg_count=veg_count, nonveg_count=nonveg_count,
         meal_stats=meal_stats, food_stats=food_stats,
-        open_polls_count=open_polls_count
+        open_polls_count=open_polls_count,
+        booking_trend=booking_trend,
+        rating_dist=rating_dist,
+        meal_satisfaction=meal_satisfaction,
+        feedback_rate=feedback_rate,
+        heatmap=heatmap, heatmap_max=heatmap_max,
+        days_order=days_order, meals_order=meals_order,
+        comeback_dishes=comeback_dishes
     )
+
+
+# ================================================================
+# ----------------  WEEKLY PDF REPORT  ---------------------------
+# ================================================================
+@app.route('/admin/report')
+def download_report():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, HRFlowable, PageBreak)
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    import io
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    now   = datetime.now()
+    week_ago = now.date() - timedelta(days=7)
+
+    # --- data collection ---
+    cursor.execute("""
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN food_type='Veg' THEN 1 ELSE 0 END) as veg,
+               SUM(CASE WHEN food_type='Non-Veg' THEN 1 ELSE 0 END) as nonveg,
+               COALESCE(SUM(guest_count),0) as guests
+        FROM bookings WHERE booking_date >= %s
+    """, (week_ago,))
+    bk = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT meal, COUNT(*) as cnt FROM bookings
+        WHERE booking_date >= %s GROUP BY meal ORDER BY cnt DESC
+    """, (week_ago,))
+    meal_bk = cursor.fetchall() or []
+
+    cursor.execute("""
+        SELECT d.dish_name, AVG(f.rating) as avg_r, COUNT(f.id) as reviews,
+               GROUP_CONCAT(f.comment SEPARATOR '||||') as comments
+        FROM feedback f JOIN dishes d ON f.dish_id=d.id
+        JOIN bookings b ON f.booking_id=b.id
+        WHERE b.booking_date >= %s
+        GROUP BY d.dish_name ORDER BY avg_r DESC
+    """, (week_ago,))
+    dish_rows = cursor.fetchall() or []
+
+    cursor.execute("""
+        SELECT p.question, p.meal, p.poll_date, p.winner_dish,
+               COUNT(DISTINCT pv.user_id) as votes
+        FROM polls p LEFT JOIN poll_votes pv ON p.id=pv.poll_id
+        WHERE p.poll_date >= %s
+        GROUP BY p.id ORDER BY p.poll_date DESC
+    """, (week_ago,))
+    poll_rows = cursor.fetchall() or []
+
+    cursor.execute("SELECT AVG(rating) as avg FROM feedback JOIN bookings b ON feedback.booking_id=b.id WHERE b.booking_date >= %s", (week_ago,))
+    avg_row = cursor.fetchone()
+    overall_avg = round(float(avg_row['avg']), 2) if avg_row and avg_row['avg'] else 0
+
+    cursor.close()
+    conn.close()
+
+    # --- build PDF in memory ---
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    GREEN  = colors.HexColor('#2e7d32')
+    LGREEN = colors.HexColor('#e8f5e9')
+    ORANGE = colors.HexColor('#e65100')
+    RED    = colors.HexColor('#c62828')
+    GREY   = colors.HexColor('#616161')
+    LGREY  = colors.HexColor('#f5f5f5')
+    WHITE  = colors.white
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('title', fontSize=22, textColor=GREEN,
+                                  fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=4)
+    sub_style   = ParagraphStyle('sub',   fontSize=11, textColor=GREY,
+                                  alignment=TA_CENTER, spaceAfter=2)
+    h1_style    = ParagraphStyle('h1',    fontSize=14, textColor=GREEN,
+                                  fontName='Helvetica-Bold', spaceBefore=14, spaceAfter=6)
+    h2_style    = ParagraphStyle('h2',    fontSize=11, textColor=GREY,
+                                  fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=4)
+    body_style  = ParagraphStyle('body',  fontSize=10, textColor=colors.black,
+                                  leading=15, spaceAfter=4)
+    small_style = ParagraphStyle('small', fontSize=9,  textColor=GREY, spaceAfter=3)
+
+    def make_table(data, col_widths, header_bg=LGREEN):
+        t = Table(data, colWidths=col_widths)
+        style = [
+            ('BACKGROUND',  (0,0), (-1,0), header_bg),
+            ('TEXTCOLOR',   (0,0), (-1,0), GREEN),
+            ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE',    (0,0), (-1,0), 10),
+            ('BOTTOMPADDING',(0,0),(-1,0), 8),
+            ('TOPPADDING',  (0,0),(-1,0), 8),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1),[WHITE, LGREY]),
+            ('FONTSIZE',    (0,1),(-1,-1), 9),
+            ('TOPPADDING',  (0,1),(-1,-1), 6),
+            ('BOTTOMPADDING',(0,1),(-1,-1),6),
+            ('GRID',        (0,0),(-1,-1), 0.4, colors.HexColor('#e0e0e0')),
+            ('ROUNDEDCORNERS', [4]),
+        ]
+        t.setStyle(TableStyle(style))
+        return t
+
+    story = []
+
+    # ── Cover ──
+    story.append(Spacer(1, 1.5*cm))
+    story.append(Paragraph('IntelliMess', title_style))
+    story.append(Paragraph('Weekly Operations Report', sub_style))
+    story.append(Paragraph(
+        f"Week of {week_ago.strftime('%d %b %Y')} – {now.strftime('%d %b %Y')}",
+        sub_style))
+    story.append(Paragraph(f"Generated on {now.strftime('%d %b %Y, %I:%M %p')}", small_style))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=GREEN, spaceAfter=16))
+
+    # ── 1. Booking Summary ──
+    story.append(Paragraph('1. Booking Summary', h1_style))
+    total = bk['total'] or 0
+    veg   = bk['veg']   or 0
+    nonveg= bk['nonveg']or 0
+    guests= bk['guests']or 0
+
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Bookings (this week)', str(total)],
+        ['Vegetarian Bookings',        str(veg)],
+        ['Non-Vegetarian Bookings',    str(nonveg)],
+        ['Guest Meals Included',       str(guests)],
+        ['Overall Avg Satisfaction',   f'{overall_avg} / 5'],
+    ]
+    story.append(make_table(summary_data, [10*cm, 5*cm]))
+    story.append(Spacer(1, 0.4*cm))
+
+    if meal_bk:
+        story.append(Paragraph('Bookings by Meal', h2_style))
+        meal_data = [['Meal', 'Bookings']] + [[r['meal'], str(r['cnt'])] for r in meal_bk]
+        story.append(make_table(meal_data, [10*cm, 5*cm]))
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── 2. Satisfaction & Ratings ──
+    story.append(PageBreak())
+    story.append(Paragraph('2. Dish Ratings & Satisfaction', h1_style))
+
+    if dish_rows:
+        rating_data = [['Dish', 'Avg Rating', 'Reviews']]
+        for d in dish_rows:
+            avg  = round(float(d['avg_r']), 2) if d['avg_r'] else 0
+            stars = '★' * int(round(avg)) + '☆' * (5 - int(round(avg)))
+            rating_data.append([d['dish_name'], f'{avg}  {stars}', str(d['reviews'])])
+        story.append(make_table(rating_data, [8.5*cm, 4.5*cm, 2.5*cm]))
+
+        if dish_rows:
+            best  = dish_rows[0]
+            worst = dish_rows[-1]
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph(
+                f"<b>Top Dish:</b> {best['dish_name']} ({round(float(best['avg_r']),2)}/5)",
+                body_style))
+            story.append(Paragraph(
+                f"<b>Needs Attention:</b> {worst['dish_name']} ({round(float(worst['avg_r']),2)}/5)",
+                body_style))
+    else:
+        story.append(Paragraph('No ratings recorded this week.', body_style))
+
+    # ── 3. Sentiment Analysis ──
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph('3. Comment Sentiment Analysis', h1_style))
+
+    POSITIVE_WORDS = {'good','great','excellent','amazing','delicious','tasty','loved',
+        'fantastic','wonderful','nice','perfect','enjoyed','fresh','hot','crispy',
+        'yummy','best','awesome','superb','happy','satisfied','well','better','clean'}
+    NEGATIVE_WORDS = {'bad','poor','terrible','awful','horrible','disgusting','cold',
+        'stale','overcooked','undercooked','oily','bland','worst','hate','unhappy',
+        'disappointed','tasteless','hard','burnt','raw','dirty','spicy','less',
+        'not','never','complaint','issue','problem','delay','late','slow','waste'}
+
+    def quick_sentiment(text):
+        if not text: return 'Neutral'
+        words = text.lower().split()
+        p = sum(1 for w in words if w.strip('.,!?') in POSITIVE_WORDS)
+        n = sum(1 for w in words if w.strip('.,!?') in NEGATIVE_WORDS)
+        return 'Positive' if p > n else ('Negative' if n > p else 'Neutral')
+
+    if dish_rows:
+        sent_data = [['Dish', 'Sentiment', 'Top Comment']]
+        for d in dish_rows:
+            cmts = [c.strip() for c in (d['comments'] or '').split('||||') if c.strip()]
+            if not cmts:
+                sent_data.append([d['dish_name'], 'No comments', '—'])
+                continue
+            pos = sum(1 for c in cmts if quick_sentiment(c)=='Positive')
+            neg = sum(1 for c in cmts if quick_sentiment(c)=='Negative')
+            label = 'Mostly Positive' if pos > neg else ('Needs Improvement' if neg > pos else 'Mixed')
+            top   = cmts[0][:60] + ('…' if len(cmts[0])>60 else '')
+            sent_data.append([d['dish_name'], label, top])
+        story.append(make_table(sent_data, [5*cm, 4*cm, 6.5*cm]))
+    else:
+        story.append(Paragraph('No comments recorded this week.', body_style))
+
+    # ── 4. Poll Results ──
+    story.append(PageBreak())
+    story.append(Paragraph('4. Poll Results & Winners', h1_style))
+
+    if poll_rows:
+        poll_data = [['Question', 'Meal', 'Date', 'Winner Dish', 'Votes']]
+        for p in poll_rows:
+            winner = p['winner_dish'] or 'Poll open / no votes'
+            date_str = p['poll_date'].strftime('%d %b') if hasattr(p['poll_date'],'strftime') else str(p['poll_date'])
+            q = (p['question'][:40] + '…') if len(p['question'])>40 else p['question']
+            poll_data.append([q, p['meal'], date_str, winner, str(p['votes'])])
+        story.append(make_table(poll_data, [5.5*cm, 2.5*cm, 2*cm, 4*cm, 1.5*cm]))
+    else:
+        story.append(Paragraph('No polls conducted this week.', body_style))
+
+    # ── Footer note ──
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width='100%', thickness=0.8, color=colors.HexColor('#e0e0e0')))
+    story.append(Paragraph('Generated by IntelliMess · Confidential', small_style))
+
+    doc.build(story)
+    buf.seek(0)
+
+    filename = f"IntelliMess_Report_{now.strftime('%Y-%m-%d')}.pdf"
+    return Response(buf, mimetype='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename={filename}'})
+
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':

@@ -1,209 +1,441 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Admin Dashboard - IntelliMess</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-    <style>
-        .guest-breakdown { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
-        .guest-tag { background:rgba(255,255,255,0.2); padding:6px 14px; border-radius:20px; font-size:13px; }
-        .guest-tag strong { font-size:16px; display:block; }
-    </style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard – IntelliMess</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .admin-container { max-width:1100px; margin:30px auto; padding:0 20px 60px; }
+    .section-card { background:#fff; border-radius:18px; padding:28px; margin-bottom:28px; box-shadow:0 4px 20px rgba(0,0,0,.08); }
+    .section-card h3 { font-size:17px; font-weight:700; color:#333; margin-bottom:20px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; display:flex; align-items:center; gap:8px; }
+    .section-card h3 i { color:var(--primary-color); }
+
+    /* Stat cards */
+    .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:24px; }
+    .stat-card { background:#fff; border-radius:16px; padding:22px 18px; box-shadow:0 4px 16px rgba(0,0,0,.08); text-align:center; transition:.3s; }
+    .stat-card:hover { transform:translateY(-3px); }
+    .stat-icon { width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; }
+    .stat-icon i { font-size:22px; color:#fff; }
+    .stat-value { font-size:28px; font-weight:700; color:#333; }
+    .stat-label { font-size:12px; color:#888; margin-top:4px; }
+
+    /* Next meal banner */
+    .meal-banner { background:linear-gradient(135deg,var(--primary-color),var(--primary-light)); border-radius:18px; padding:24px 28px; color:#fff; margin-bottom:24px; }
+    .meal-banner h2 { font-size:22px; margin-bottom:4px; }
+    .meal-banner .meta { font-size:13px; opacity:.85; margin-bottom:16px; }
+    .meal-tiles { display:flex; gap:12px; flex-wrap:wrap; }
+    .meal-tile { background:rgba(255,255,255,.2); border-radius:12px; padding:10px 18px; text-align:center; }
+    .meal-tile .val { font-size:22px; font-weight:700; }
+    .meal-tile .lbl { font-size:11px; opacity:.85; }
+
+    /* Charts grid */
+    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:24px; }
+    .chart-box { background:#fff; border-radius:18px; padding:24px; box-shadow:0 4px 16px rgba(0,0,0,.08); }
+    .chart-box h4 { font-size:14px; font-weight:700; color:#555; margin-bottom:16px; }
+
+    /* Dish sentiment */
+    .dish-row { border-bottom:1px solid #f5f5f5; padding:14px 0; }
+    .dish-row:last-child { border:none; }
+    .dish-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    .dish-name { font-weight:600; font-size:15px; }
+    .sentiment-badge { font-size:12px; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .badge-positive { background:#e8f5e9; color:#2e7d32; }
+    .badge-negative { background:#fce4ec; color:#c62828; }
+    .badge-mixed    { background:#fff3e0; color:#e65100; }
+    .badge-none     { background:#f5f5f5; color:#999; }
+    .stars { color:#ffc107; font-size:13px; }
+    .sentiment-bar { display:flex; height:8px; border-radius:999px; overflow:hidden; margin:8px 0 4px; }
+    .bar-pos { background:#66bb6a; }
+    .bar-neu { background:#bdbdbd; }
+    .bar-neg { background:#ef5350; }
+    .bar-legend { display:flex; gap:14px; font-size:11px; color:#888; }
+    .notable-comments { margin-top:8px; font-size:12px; color:#666; }
+    .comment-chip { display:inline-block; background:#f5f5f5; border-radius:8px; padding:3px 10px; margin:2px 3px; }
+    .comment-chip.pos { background:#e8f5e9; color:#388e3c; }
+    .comment-chip.neg { background:#fce4ec; color:#c62828; }
+
+    /* Booking table */
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { background:#f8f8f8; padding:11px 14px; text-align:left; border-bottom:2px solid #eee; font-weight:600; color:#555; }
+    td { padding:11px 14px; border-bottom:1px solid #f5f5f5; color:#444; }
+    tr:hover td { background:#fafafa; }
+    .meal-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; color:#fff; background:linear-gradient(135deg,#FF9800,#f57c00); }
+    .guest-chip { background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:20px; font-size:11px; }
+
+    /* Feedback rate bar */
+    .rate-track { background:#eee; border-radius:999px; height:12px; margin:8px 0; }
+    .rate-fill { height:12px; border-radius:999px; background:linear-gradient(90deg,var(--primary-color),var(--primary-light)); transition:width .8s; }
+  </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
-    <nav class="navbar">
-        <a href="/admin" class="navbar-brand">
-            <i class="fas fa-utensils"></i><span>IntelliMess</span>
-        </a>
-        <div class="nav-links">
-            <a href="/admin/polls"><i class="fas fa-poll"></i> Manage Polls</a>
-            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </div>
-    </nav>
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
 
-    <div class="admin-container">
-        <div class="admin-header">
-            <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
-            <p>Manage bookings, view statistics, and monitor feedback</p>
-        </div>
+  <div class="admin-container">
 
-        <!-- STAT CARDS -->
-        <div class="admin-stats">
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
-                <div class="stat-value">{{ next_meal_count }}</div>
-                <div class="stat-label">Next Meal (incl. guests)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:linear-gradient(135deg,#ff9800,#f57c00)">
-                    <i class="fas fa-utensils"></i>
-                </div>
-                <div class="stat-value">{{ bookings|length }}</div>
-                <div class="stat-label">Total Bookings</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:linear-gradient(135deg,#9c27b0,#7b1fa2)">
-                    <i class="fas fa-star"></i>
-                </div>
-                <div class="stat-value">{{ dish_stats|length }}</div>
-                <div class="stat-label">Dishes Rated</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:linear-gradient(135deg,#5c6bc0,#3949ab)">
-                    <i class="fas fa-poll"></i>
-                </div>
-                <div class="stat-value">{{ open_polls_count }}</div>
-                <div class="stat-label">Active Polls</div>
-            </div>
-        </div>
+    <!-- PAGE HEADER -->
+    <div class="admin-header">
+      <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+      <p>Bookings, satisfaction analytics &amp; comment insights</p>
+    </div>
 
-        <!-- NEXT MEAL BREAKDOWN -->
-        <div style="background:linear-gradient(135deg,var(--primary-color),var(--primary-light));padding:22px;border-radius:12px;color:white;margin-top:15px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div>
-                    <strong style="font-size:22px;">{{ next_meal }}</strong>
-                    <span style="margin:0 10px;">|</span>
-                    <span>{{ next_meal_date }}</span>
-                </div>
-                <a href="/admin/polls" style="background:rgba(255,255,255,0.2); color:white; padding:8px 18px; border-radius:20px; text-decoration:none; font-size:13px;">
-                    <i class="fas fa-poll"></i> Manage Polls
-                </a>
-            </div>
+    <!-- TOP STAT CARDS -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#4CAF50,#81C784)"><i class="fas fa-calendar-check"></i></div>
+        <div class="stat-value">{{ next_meal_count }}</div>
+        <div class="stat-label">Next Meal (incl. guests)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#FF9800,#f57c00)"><i class="fas fa-utensils"></i></div>
+        <div class="stat-value">{{ bookings|length }}</div>
+        <div class="stat-label">Total Bookings</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#9c27b0,#7b1fa2)"><i class="fas fa-star"></i></div>
+        <div class="stat-value">{{ overall }}/5</div>
+        <div class="stat-label">Avg Satisfaction</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#5c6bc0,#3949ab)"><i class="fas fa-poll"></i></div>
+        <div class="stat-value">{{ open_polls_count }}</div>
+        <div class="stat-label">Active Polls</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#26c6da,#0097a7)"><i class="fas fa-comment-dots"></i></div>
+        <div class="stat-value">{{ feedback_rate }}%</div>
+        <div class="stat-label">Feedback Rate</div>
+      </div>
+    </div>
 
-            <div class="guest-breakdown">
-                <div class="guest-tag">
-                    <strong>{{ next_meal_count }}</strong> Total Meals
-                </div>
-                <div class="guest-tag">
-                    <strong>{{ student_count }}</strong> Students
-                </div>
-                <div class="guest-tag">
-                    <strong>{{ total_guests }}</strong> Guests
-                </div>
-                <div class="guest-tag">
-                    <strong>{{ veg_count }}</strong> Veg
-                </div>
-                <div class="guest-tag">
-                    <strong>{{ nonveg_count }}</strong> Non-Veg
-                </div>
-            </div>
-        </div>
+    <!-- NEXT MEAL BANNER -->
+    <div class="meal-banner">
+      <h2><i class="fas fa-clock"></i> Next Meal: {{ next_meal }}</h2>
+      <div class="meta">{{ next_meal_date }} &nbsp;|&nbsp; Preparation summary</div>
+      <div class="meal-tiles">
+        <div class="meal-tile"><div class="val">{{ next_meal_count }}</div><div class="lbl">Total Meals</div></div>
+        <div class="meal-tile"><div class="val">{{ student_count }}</div><div class="lbl">Students</div></div>
+        <div class="meal-tile"><div class="val">{{ total_guests }}</div><div class="lbl">Guests</div></div>
+        <div class="meal-tile"><div class="val">{{ veg_count }}</div><div class="lbl">🌿 Veg</div></div>
+        <div class="meal-tile"><div class="val">{{ nonveg_count }}</div><div class="lbl">🍗 Non-Veg</div></div>
+      </div>
+    </div>
 
-        <!-- ALL BOOKINGS -->
-        <div class="admin-section">
-            <h3><i class="fas fa-list"></i> All Bookings</h3>
-            {% if bookings %}
-            <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:14px;">
-                <thead>
-                    <tr style="background:#f5f5f5;">
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Student</th>
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Roll No</th>
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Meal</th>
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Type</th>
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Date</th>
-                        <th style="padding:12px; text-align:left; border-bottom:2px solid #ddd;">Guests</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for booking in bookings %}
-                <tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:12px;">{{ booking.username }}</td>
-                    <td style="padding:12px; color:#888;">{{ booking.roll_no }}</td>
-                    <td style="padding:12px;">
-                        <span style="background:linear-gradient(135deg,var(--secondary-color),#f57c00);color:white;padding:4px 12px;border-radius:20px;font-size:12px;">
-                            {{ booking.meal }}
-                        </span>
-                    </td>
-                    <td style="padding:12px; font-size:13px;">{{ booking.food_type }}</td>
-                    <td style="padding:12px;">{{ booking.booking_date }}</td>
-                    <td style="padding:12px; text-align:center;">
-                        {% if booking.guest_count and booking.guest_count > 0 %}
-                            <span style="background:#e3f2fd; color:#1565c0; padding:3px 10px; border-radius:20px; font-size:12px;">
-                                <i class="fas fa-users"></i> {{ booking.guest_count }} ({{ booking.guest_food_type }})
-                            </span>
-                        {% else %}—{% endif %}
-                    </td>
-                </tr>
+    <!-- CHARTS ROW 1 -->
+    <div class="charts-grid">
+      <div class="chart-box">
+        <h4><i class="fas fa-chart-line"></i> Bookings – Last 7 Days</h4>
+        <canvas id="trendChart" height="180"></canvas>
+      </div>
+      <div class="chart-box">
+        <h4><i class="fas fa-th-large"></i> Bookings by Meal Type</h4>
+        <canvas id="mealChart" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW 2 -->
+    <div class="charts-grid" style="margin-top:24px;">
+      <div class="chart-box">
+        <h4><i class="fas fa-seedling"></i> Veg vs Non-Veg Split</h4>
+        <canvas id="foodChart" height="200"></canvas>
+      </div>
+      <div class="chart-box">
+        <h4><i class="fas fa-star-half-alt"></i> Rating Distribution (1–5)</h4>
+        <canvas id="ratingDistChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- MEAL SATISFACTION -->
+    <div class="section-card" style="margin-top:24px;">
+      <h3><i class="fas fa-trophy"></i> Meal-wise Satisfaction</h3>
+      <canvas id="mealSatChart" height="100"></canvas>
+    </div>
+
+    <!-- FEEDBACK PARTICIPATION -->
+    <div class="section-card">
+      <h3><i class="fas fa-comments"></i> Feedback Participation</h3>
+      <p style="color:#666; font-size:14px;">{{ feedback_rate }}% of booked meals received feedback</p>
+      <div class="rate-track"><div class="rate-fill" style="width:{{ feedback_rate }}%"></div></div>
+      <p style="font-size:12px; color:#aaa; margin-top:4px;">Target: 80%</p>
+    </div>
+
+    <!-- DISH RATINGS + SENTIMENT -->
+    <div class="section-card">
+      <h3><i class="fas fa-chart-bar"></i> Dish Ratings &amp; Comment Analysis</h3>
+      {% if dish_stats %}
+        {% for dish in dish_stats %}
+        <div class="dish-row">
+          <div class="dish-top">
+            <span class="dish-name">{{ dish.dish_name }}</span>
+            <span style="display:flex; align-items:center; gap:10px;">
+              <span class="stars">
+                {% for i in range(5) %}
+                  {% if dish.avg_rating and i < dish.avg_rating|round %}★{% else %}☆{% endif %}
                 {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p style="color:#666; padding:20px; text-align:center;">No bookings found.</p>
-            {% endif %}
+                <strong style="color:#555; margin-left:4px;">{{ dish.avg_rating|round(1) if dish.avg_rating else 'N/A' }}</strong>
+              </span>
+              {% if dish.sentiment == 'Mostly Positive' %}
+                <span class="sentiment-badge badge-positive">😊 {{ dish.sentiment }}</span>
+              {% elif dish.sentiment == 'Needs Improvement' %}
+                <span class="sentiment-badge badge-negative">😞 {{ dish.sentiment }}</span>
+              {% elif dish.sentiment == 'Mixed' %}
+                <span class="sentiment-badge badge-mixed">😐 {{ dish.sentiment }}</span>
+              {% else %}
+                <span class="sentiment-badge badge-none">No Comments</span>
+              {% endif %}
+            </span>
+          </div>
+
+          {% if dish.comment_count > 0 %}
+          <div class="sentiment-bar">
+            <div class="bar-pos" style="width:{{ dish.sentiment_pct.positive }}%"></div>
+            <div class="bar-neu" style="width:{{ dish.sentiment_pct.neutral }}%"></div>
+            <div class="bar-neg" style="width:{{ dish.sentiment_pct.negative }}%"></div>
+          </div>
+          <div class="bar-legend">
+            <span>✅ Positive {{ dish.sentiment_pct.positive }}%</span>
+            <span>😐 Neutral {{ dish.sentiment_pct.neutral }}%</span>
+            <span>❌ Negative {{ dish.sentiment_pct.negative }}%</span>
+            <span style="margin-left:auto; color:#bbb;">{{ dish.comment_count }} comment(s) | {{ dish.total_reviews }} review(s)</span>
+          </div>
+          {% if dish.notable_positive or dish.notable_negative %}
+          <div class="notable-comments">
+            {% for c in dish.notable_positive %}
+              <span class="comment-chip pos"><i class="fas fa-quote-left" style="font-size:9px;"></i> {{ c[:60] }}{% if c|length > 60 %}…{% endif %}</span>
+            {% endfor %}
+            {% for c in dish.notable_negative %}
+              <span class="comment-chip neg"><i class="fas fa-quote-left" style="font-size:9px;"></i> {{ c[:60] }}{% if c|length > 60 %}…{% endif %}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% else %}
+          <p style="font-size:12px; color:#bbb; margin-top:6px;">No comments submitted yet.</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="color:#aaa; text-align:center; padding:20px;">No feedback received yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- ALL BOOKINGS TABLE -->
+    <div class="section-card">
+      <h3><i class="fas fa-list"></i> All Bookings</h3>
+      {% if bookings %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th><th>Roll No</th><th>Meal</th><th>Type</th><th>Date</th><th>Guests</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td>{{ b.username }}</td>
+            <td style="color:#888;">{{ b.roll_no }}</td>
+            <td><span class="meal-badge">{{ b.meal }}</span></td>
+            <td>{{ b.food_type }}</td>
+            <td>{{ b.booking_date }}</td>
+            <td>
+              {% if b.guest_count and b.guest_count > 0 %}
+                <span class="guest-chip"><i class="fas fa-users"></i> {{ b.guest_count }} ({{ b.guest_food_type }})</span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p style="color:#aaa; text-align:center; padding:20px;">No bookings found.</p>
+      {% endif %}
+    </div>
+
+        <!-- BOOKING HEATMAP -->
+        <div class="section-card">
+            <div class="section-title"><i class="fas fa-th"></i> Booking Pattern Heatmap</div>
+            <p style="font-size:13px;color:#888;margin-bottom:16px;">Darker green = more bookings. Shows which day + meal combinations are most popular overall.</p>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:separate;border-spacing:4px;font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;padding:8px 12px;color:#888;font-weight:600;"></th>
+                            {% for meal in meals_order %}
+                            <th style="text-align:center;padding:8px;color:#555;font-weight:600;">
+                                {% if meal=='Breakfast' %}🌅{% elif meal=='Lunch' %}☀️{% elif meal=='Snacks' %}🍵{% else %}🌙{% endif %}
+                                {{ meal }}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for day in days_order %}
+                        <tr>
+                            <td style="padding:8px 12px;font-weight:600;color:#555;">{{ day[:3] }}</td>
+                            {% for meal in meals_order %}
+                            {% set count = heatmap[day][meal] %}
+                            {% set intensity = ((count / heatmap_max) * 100)|int if heatmap_max > 0 else 0 %}
+                            {% if intensity == 0 %}{% set bg='#f5f5f5' %}{% set fg='#bbb' %}
+                            {% elif intensity < 25 %}{% set bg='#c8e6c9' %}{% set fg='#2e7d32' %}
+                            {% elif intensity < 50 %}{% set bg='#81c784' %}{% set fg='#1b5e20' %}
+                            {% elif intensity < 75 %}{% set bg='#4CAF50' %}{% set fg='#fff' %}
+                            {% else %}{% set bg='#2e7d32' %}{% set fg='#fff' %}{% endif %}
+                            <td style="text-align:center;padding:12px 8px;background:{{ bg }};color:{{ fg }};border-radius:8px;font-weight:{% if count>0 %}600{% else %}400{% endif %};">
+                                {% if count > 0 %}{{ count }}{% else %}—{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- DISH RATINGS -->
-        <div class="admin-section">
-            <h3><i class="fas fa-star"></i> Dish Ratings</h3>
-            {% if dish_stats %}
+        <!-- DISH COMEBACK SUGGESTIONS -->
+        <div class="section-card">
+            <div class="section-title"><i class="fas fa-redo"></i> Dish Comeback Suggestions</div>
+            {% if comeback_dishes %}
+            <p style="font-size:13px;color:#888;margin-bottom:16px;">These highly-rated dishes haven't been served in 14+ days — consider adding them back!</p>
             <ul class="admin-list">
-                {% for dish in dish_stats %}
+                {% for dish in comeback_dishes %}
                 <li>
-                    <span class="dish-name">{{ dish.dish_name }}</span>
+                    <span class="dish-name">
+                        🌟 {{ dish.dish_name }}
+                        <span style="font-size:12px;color:#aaa;margin-left:8px;">Last served: {{ dish.last_served }}</span>
+                    </span>
                     <span class="rating">
-                        <span class="rating-value">{{ dish.avg_rating|round(1) }}</span>
-                        <i class="fas fa-star"></i>
+                        <span class="rating-value" style="color:#4CAF50;">{{ dish.avg_rating|round(1) }}</span>
+                        <i class="fas fa-star" style="color:#4CAF50;"></i>
                     </span>
                 </li>
                 {% endfor %}
             </ul>
             {% else %}
-            <p style="color:#666; padding:20px; text-align:center;">No ratings yet.</p>
+            <div style="text-align:center;padding:30px;color:#bbb;">
+                <i class="fas fa-check-circle" style="font-size:36px;color:#4CAF50;display:block;margin-bottom:10px;"></i>
+                <strong style="color:#aaa;">All popular dishes have been served recently!</strong>
+                <p style="font-size:13px;margin-top:6px;">Suggestions appear when a dish rated 4.0+ hasn't appeared in 14+ days.</p>
+            </div>
             {% endif %}
         </div>
 
-        <!-- ANALYTICS CHARTS -->
-        <div class="admin-section">
-            <h3><i class="fas fa-chart-bar"></i> Analytics</h3>
-            <canvas id="mealChart" height="100"></canvas>
-            <br/><br/>
-            <canvas id="foodChart" height="100"></canvas>
-            <br/><br/>
-            <canvas id="ratingChart" height="100"></canvas>
+        <!-- PDF DOWNLOAD -->
+        <div class="section-card" style="text-align:center;padding:32px;">
+            <div class="section-title" style="justify-content:center;border-bottom:none;padding-bottom:0;margin-bottom:8px;">
+                <i class="fas fa-file-pdf" style="color:#e53935;"></i> Weekly Report
+            </div>
+            <p style="color:#888;font-size:14px;margin-bottom:22px;">
+                Download a complete PDF covering this week's bookings, ratings, sentiment analysis, and poll results.
+            </p>
+            <a href="/admin/report" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,#e53935,#b71c1c);color:#fff;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;box-shadow:0 4px 15px rgba(229,57,53,.3);">
+                <i class="fas fa-download"></i> Download Weekly Report (PDF)
+            </a>
         </div>
 
-        <div class="admin-logout">
-            <a href="/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </div>
+    <div class="admin-logout">
+      <a href="/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
+  </div>
 </div>
 
 <script>
-const mealData = {{ meal_stats|tojson }};
+// ── helpers ────────────────────────────────────────────────────
+const COLORS = ['#4CAF50','#FF9800','#9c27b0','#5c6bc0','#26c6da','#ef5350'];
+
+// 1. Booking trend (line)
+const trend = {{ booking_trend|tojson }};
+new Chart(document.getElementById('trendChart'), {
+  type:'line',
+  data:{
+    labels: trend.map(d => d.bdate),
+    datasets:[{
+      label:'Bookings',
+      data: trend.map(d => d.count),
+      borderColor:'#4CAF50', backgroundColor:'rgba(76,175,80,.12)',
+      tension:.4, fill:true, pointRadius:5, pointBackgroundColor:'#4CAF50'
+    }]
+  },
+  options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{stepSize:1}}}}
+});
+
+// 2. Meal-wise bar
+const meals = {{ meal_stats|tojson }};
 new Chart(document.getElementById('mealChart'), {
-    type: 'bar',
-    data: {
-        labels: mealData.map(i => i.meal),
-        datasets: [{label: 'Meal-wise Bookings', data: mealData.map(i => i.count),
-            backgroundColor: ['#42a5f5','#66bb6a','#ffa726','#ab47bc']}]
-    },
-    options: {plugins:{legend:{display:false}}}
+  type:'bar',
+  data:{
+    labels: meals.map(m => m.meal),
+    datasets:[{
+      label:'Bookings',
+      data: meals.map(m => m.count),
+      backgroundColor: COLORS,
+      borderRadius:8
+    }]
+  },
+  options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{stepSize:1}}}}
 });
 
-const foodData = {{ food_stats|tojson }};
+// 3. Veg vs NonVeg doughnut
+const food = {{ food_stats|tojson }};
 new Chart(document.getElementById('foodChart'), {
-    type: 'doughnut',
-    data: {
-        labels: foodData.map(i => i.food_type),
-        datasets: [{data: foodData.map(i => i.count),
-            backgroundColor: ['#66bb6a','#ef5350']}]
-    },
-    options: {plugins:{title:{display:true,text:'Veg vs Non-Veg'}}}
+  type:'doughnut',
+  data:{
+    labels: food.map(f => f.food_type),
+    datasets:[{data: food.map(f => f.count), backgroundColor:['#66bb6a','#ef5350'], hoverOffset:6}]
+  },
+  options:{plugins:{legend:{position:'bottom'}}, cutout:'65%'}
 });
 
-const ratingData = {{ dish_stats|tojson }};
-new Chart(document.getElementById('ratingChart'), {
-    type: 'bar',
-    data: {
-        labels: ratingData.map(i => i.dish_name),
-        datasets: [{label: 'Average Rating', data: ratingData.map(i => i.avg_rating),
-            backgroundColor: '#5c6bc0'}]
-    },
-    options: {scales:{y:{min:0,max:5}}}
+// 4. Rating distribution (1-5 horizontal bar)
+const ratingDist = {{ rating_dist|tojson }};
+const ratingLabels = ['1 ★','2 ★','3 ★','4 ★','5 ★'];
+const ratingValues = ['1','2','3','4','5'].map(k => ratingDist[k] || 0);
+new Chart(document.getElementById('ratingDistChart'), {
+  type:'bar',
+  data:{
+    labels: ratingLabels,
+    datasets:[{
+      label:'Responses',
+      data: ratingValues,
+      backgroundColor:['#ef5350','#ff9800','#ffee58','#9ccc65','#4CAF50'],
+      borderRadius:8
+    }]
+  },
+  options:{
+    indexAxis:'y',
+    plugins:{legend:{display:false}},
+    scales:{x:{beginAtZero:true, ticks:{stepSize:1}}}
+  }
+});
+
+// 5. Meal satisfaction radar
+const msat = {{ meal_satisfaction|tojson }};
+new Chart(document.getElementById('mealSatChart'), {
+  type:'radar',
+  data:{
+    labels: msat.map(m => m.meal),
+    datasets:[{
+      label:'Avg Rating',
+      data: msat.map(m => parseFloat(m.avg_rating).toFixed(2)),
+      backgroundColor:'rgba(76,175,80,.2)',
+      borderColor:'#4CAF50',
+      pointBackgroundColor:'#4CAF50',
+      pointRadius:5
+    }]
+  },
+  options:{
+    scales:{r:{min:0, max:5, ticks:{stepSize:1}}},
+    plugins:{legend:{display:false}}
+  }
 });
 </script>
 </body>

@@ -1,148 +1,212 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu Polls - IntelliMess</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        .polls-container { max-width: 700px; margin: 30px auto; padding: 0 20px; }
-        .poll-card {
-            background: white; border-radius: 14px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            padding: 24px; margin-bottom: 24px;
-        }
-        .poll-meta { font-size: 13px; color: #888; margin-bottom: 12px; }
-        .poll-question { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: #333; }
-        .poll-option {
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px 16px; border: 2px solid #e0e0e0;
-            border-radius: 10px; margin-bottom: 10px;
-            cursor: pointer; transition: all 0.2s;
-        }
-        .poll-option:hover { border-color: var(--primary-color, #2196f3); background: #f0f7ff; }
-        .poll-option input[type=radio] { accent-color: var(--primary-color, #2196f3); width:18px; height:18px; }
-        .vote-bar-wrap { flex: 1; }
-        .vote-bar-bg { background: #eee; border-radius: 999px; height: 8px; margin-top: 4px; }
-        .vote-bar { background: linear-gradient(90deg, #2196f3, #64b5f6); height: 8px; border-radius: 999px; transition: width 0.5s; }
-        .vote-pct { font-size: 12px; color: #888; }
-        .voted-badge { font-size: 12px; background: #e8f5e9; color: #388e3c; padding: 2px 8px; border-radius: 20px; }
-        .section-title { font-size: 20px; font-weight: 700; margin: 30px 0 16px; color: #444; }
-        .empty-msg { text-align: center; color: #aaa; padding: 40px 0; }
-        .btn-vote { background: linear-gradient(135deg, #5c6bc0, #3949ab); color: white; border: none; padding: 12px 28px; border-radius: 30px; font-size: 15px; cursor: pointer; margin-top: 8px; }
-        .btn-vote:hover { opacity: 0.9; }
-        .winner-option { border-color: #43a047 !important; background: #f1f8e9; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu Polls – IntelliMess</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* reuse the same card language as menu / booking */
+    .polls-wrap { max-width:760px; margin:30px auto; padding:0 20px 60px; }
+    .page-header { text-align:center; color:#fff; margin-bottom:28px; }
+    .page-header h1 { font-size:30px; font-weight:700; margin-bottom:6px; }
+    .page-header p  { font-size:14px; opacity:.85; }
+
+    .section-label {
+      color:#fff; font-size:14px; font-weight:600; letter-spacing:.5px;
+      text-transform:uppercase; margin:28px 0 14px;
+      display:flex; align-items:center; gap:8px;
+    }
+    .section-label::after { content:''; flex:1; height:1px; background:rgba(255,255,255,.3); }
+
+    /* poll card — same feel as menu-card */
+    .poll-card {
+      background:#fff; border-radius:18px; padding:26px;
+      margin-bottom:20px; box-shadow:0 4px 20px rgba(0,0,0,.09);
+      animation:fadeIn .4s ease;
+    }
+    .poll-card-header {
+      display:flex; justify-content:space-between; align-items:flex-start;
+      flex-wrap:wrap; gap:10px;
+      padding-bottom:14px; border-bottom:2px solid #f0f0f0; margin-bottom:18px;
+    }
+    .poll-meal-tag {
+      background:linear-gradient(135deg,#FF9800,#f57c00);
+      color:#fff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:600;
+    }
+    .poll-closing { font-size:12px; color:#aaa; }
+    .poll-question { font-size:17px; font-weight:700; color:#333; margin-bottom:16px; }
+
+    /* option rows */
+    .poll-option-label {
+      display:flex; align-items:center; gap:12px;
+      padding:13px 16px; border:2px solid #e8e8e8;
+      border-radius:12px; margin-bottom:10px; cursor:pointer;
+      transition:.2s; user-select:none;
+    }
+    .poll-option-label:hover { border-color:var(--primary-color); background:#f0fdf0; }
+    .poll-option-label input[type=radio] { accent-color:var(--primary-color); width:18px; height:18px; flex-shrink:0; }
+    .poll-option-label span { font-size:14px; color:#444; }
+
+    /* results bar (after voted) */
+    .result-row {
+      padding:12px 16px; border-radius:12px; margin-bottom:10px;
+      border:2px solid #e8e8e8; transition:.2s;
+    }
+    .result-row.leading { border-color:#4CAF50; background:#f0fdf0; }
+    .result-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
+    .result-text { font-size:14px; color:#444; font-weight:500; }
+    .result-badges { display:flex; gap:6px; align-items:center; }
+    .badge-voted  { background:#e8f5e9; color:#2e7d32; font-size:11px; padding:2px 8px; border-radius:20px; }
+    .badge-lead   { color:#2e7d32; font-weight:700; font-size:12px; }
+    .bar-track { background:#eee; border-radius:999px; height:9px; }
+    .bar-fill  { background:linear-gradient(90deg,var(--primary-color),var(--primary-light)); height:9px; border-radius:999px; transition:width .6s; }
+    .pct-label { font-size:11px; color:#999; margin-top:4px; }
+
+    .btn-vote {
+      display:block; width:100%;
+      background:linear-gradient(135deg,var(--primary-color),var(--primary-dark));
+      color:#fff; border:none; padding:13px 0; border-radius:12px;
+      font-size:15px; font-weight:600; cursor:pointer;
+      margin-top:14px; font-family:'Poppins',sans-serif;
+      box-shadow:0 4px 14px rgba(76,175,80,.3); transition:.3s;
+    }
+    .btn-vote:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(76,175,80,.4); }
+
+    .empty-state { text-align:center; padding:50px 20px; color:rgba(255,255,255,.7); }
+    .empty-state i { font-size:48px; display:block; margin-bottom:12px; }
+
+    .back-row { text-align:center; margin-top:10px; }
+    .back-row a { color:#fff; text-decoration:none; font-size:14px; opacity:.8; }
+    .back-row a:hover { opacity:1; }
+  </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
-    <nav class="navbar">
-        <a href="/student" class="navbar-brand">
-            <i class="fas fa-utensils"></i><span>IntelliMess</span>
-        </a>
-        <div class="nav-links">
-            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
-            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book Meal</a>
-            <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
-            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </div>
-    </nav>
-
-    <div class="polls-container">
-        <div class="section-title"><i class="fas fa-poll"></i> Active Polls</div>
-
-        {% if polls %}
-            {% for poll in polls %}
-            <div class="poll-card">
-                <div class="poll-meta">
-                    <i class="fas fa-utensils"></i> {{ poll.meal }} &nbsp;|&nbsp;
-                    <i class="fas fa-calendar"></i> {{ poll.poll_date }} &nbsp;|&nbsp;
-                    <i class="fas fa-clock"></i> Closes at {{ poll.closing_time }}
-                </div>
-                <div class="poll-question">{{ poll.question }}</div>
-
-                {% if poll.user_voted %}
-                    <!-- Show results after voting -->
-                    <div style="margin-bottom:8px;">
-                        <span class="voted-badge"><i class="fas fa-check-circle"></i> You've voted</span>
-                    </div>
-                    {% set total = poll.options | sum(attribute='vote_count') %}
-                    {% set max_votes = poll.options | map(attribute='vote_count') | max %}
-                    {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
-                    {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
-                    {% set is_leading = (option.vote_count == max_votes and max_votes > 0) %}
-                    <div class="poll-option" style="cursor:default; {% if is_leading %}border-color:#43a047; background:#f1f8e9;{% endif %}">
-                        <div class="vote-bar-wrap">
-                            <div style="display:flex; justify-content:space-between;">
-                                <span>{{ option.option_text }}</span>
-                                <span style="display:flex; gap:6px; align-items:center;">
-                                    {% if option.id == poll.user_vote_option %}
-                                        <span class="voted-badge"><i class="fas fa-check"></i> Your vote</span>
-                                    {% endif %}
-                                    {% if is_leading %}
-                                        <span style="color:#43a047; font-weight:700;">🏆 Leading</span>
-                                    {% endif %}
-                                </span>
-                            </div>
-                            <div class="vote-bar-bg">
-                                <div class="vote-bar" style="width:{{ pct }}%"></div>
-                            </div>
-                            <span class="vote-pct">{{ pct }}% ({{ option.vote_count }} votes)</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-
-                {% else %}
-                    <!-- Voting form -->
-                    <form method="POST" action="/polls/vote">
-                        <input type="hidden" name="poll_id" value="{{ poll.id }}">
-                        {% for option in poll.options %}
-                        <label class="poll-option">
-                            <input type="radio" name="option_id" value="{{ option.id }}" required>
-                            <span>{{ option.option_text }}</span>
-                        </label>
-                        {% endfor %}
-                        <button type="submit" class="btn-vote">
-                            <i class="fas fa-vote-yea"></i> Submit Vote
-                        </button>
-                    </form>
-                {% endif %}
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="empty-msg">
-                <i class="fas fa-inbox" style="font-size:40px; display:block; margin-bottom:10px;"></i>
-                No active polls right now. Check back later!
-            </div>
-        {% endif %}
-
-        {% if past_polls %}
-        <div class="section-title"><i class="fas fa-history"></i> Recent Poll Results</div>
-        {% for poll in past_polls %}
-        <div class="poll-card" style="opacity:0.85;">
-            <div class="poll-meta"><i class="fas fa-lock"></i> Closed &nbsp;|&nbsp; {{ poll.meal }} &nbsp;|&nbsp; {{ poll.poll_date }}</div>
-            <div class="poll-question">{{ poll.question }}</div>
-            {% set total = poll.options | sum(attribute='vote_count') %}
-            {% set max_votes = poll.options | map(attribute='vote_count') | max %}
-            {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
-            {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
-            {% set is_winner = (option.vote_count == max_votes and max_votes > 0) %}
-            <div class="poll-option {% if is_winner %}winner-option{% endif %}" style="cursor:default;">
-                <div class="vote-bar-wrap">
-                    <div style="display:flex; justify-content:space-between;">
-                        <span>{{ option.option_text }}</span>
-                        {% if is_winner %}<span style="color:#43a047; font-weight:700;">🏆 Winner</span>{% endif %}
-                    </div>
-                    <div class="vote-bar-bg"><div class="vote-bar" style="width:{{ pct }}%"></div></div>
-                    <span class="vote-pct">{{ pct }}% ({{ option.vote_count }} votes)</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endfor %}
-        {% endif %}
+  <nav class="navbar">
+    <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+      <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+      <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
+  </nav>
+
+  <div class="polls-wrap">
+    <div class="page-header">
+      <h1><i class="fas fa-poll"></i> Menu Polls</h1>
+      <p>Vote for what you want — the winning dish gets added to the menu!</p>
+    </div>
+
+    {% if polls %}
+    <div class="section-label"><i class="fas fa-circle" style="font-size:8px;color:#4CAF50;"></i> Active Polls</div>
+
+    {% for poll in polls %}
+    <div class="poll-card">
+      <div class="poll-card-header">
+        <div>
+          {% set meal_icons = {'Breakfast':'☀️','Lunch':'🍛','Snacks':'🥪','Dinner':'🌙'} %}
+          <span class="poll-meal-tag">{{ meal_icons.get(poll.meal,'🍽️') }} {{ poll.meal }}</span>
+          <div style="margin-top:6px; font-size:13px; color:#888;">
+            <i class="fas fa-calendar"></i> {{ poll.poll_date }}
+          </div>
+        </div>
+        <span class="poll-closing"><i class="fas fa-clock"></i> Closes {{ poll.closing_time }}</span>
+      </div>
+
+      <div class="poll-question">{{ poll.question }}</div>
+
+      {% if poll.user_voted %}
+        {# Show results #}
+        {% set total = poll.options | sum(attribute='vote_count') %}
+        {% set max_votes = poll.options | map(attribute='vote_count') | max %}
+        {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
+          {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
+          {% set is_lead = (option.vote_count == max_votes and max_votes > 0) %}
+          <div class="result-row {% if is_lead %}leading{% endif %}">
+            <div class="result-top">
+              <span class="result-text">{{ option.option_text }}</span>
+              <span class="result-badges">
+                {% if option.id == poll.user_vote_option %}
+                  <span class="badge-voted"><i class="fas fa-check"></i> Your vote</span>
+                {% endif %}
+                {% if is_lead %}<span class="badge-lead">🏆 Leading</span>{% endif %}
+              </span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:{{ pct }}%"></div></div>
+            <div class="pct-label">{{ pct }}% &nbsp;·&nbsp; {{ option.vote_count }} vote(s)</div>
+          </div>
+        {% endfor %}
+        <p style="text-align:center; font-size:12px; color:#aaa; margin-top:10px;">
+          <i class="fas fa-check-circle" style="color:#4CAF50;"></i> You've voted in this poll
+        </p>
+
+      {% else %}
+        {# Voting form #}
+        <form method="POST" action="/polls/vote">
+          <input type="hidden" name="poll_id" value="{{ poll.id }}">
+          {% for option in poll.options %}
+          <label class="poll-option-label">
+            <input type="radio" name="option_id" value="{{ option.id }}" required>
+            <span>{{ option.option_text }}</span>
+          </label>
+          {% endfor %}
+          <button type="submit" class="btn-vote">
+            <i class="fas fa-vote-yea"></i> &nbsp;Submit Vote
+          </button>
+        </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-inbox"></i>
+      <p style="font-size:16px; font-weight:600;">No active polls right now</p>
+      <p style="font-size:13px; margin-top:6px;">Check back later — the admin will post polls before meals!</p>
+    </div>
+    {% endif %}
+
+    {% if past_polls %}
+    <div class="section-label"><i class="fas fa-history"></i> Recent Results</div>
+    {% for poll in past_polls %}
+    <div class="poll-card" style="opacity:.88;">
+      <div class="poll-card-header">
+        <div>
+          <span class="poll-meal-tag" style="background:linear-gradient(135deg,#78909c,#546e7a);">
+            {{ poll.meal }} · {{ poll.poll_date }}
+          </span>
+        </div>
+        <span style="font-size:12px; background:#fce4ec; color:#c62828; padding:3px 10px; border-radius:20px;">
+          <i class="fas fa-lock"></i> Closed
+        </span>
+      </div>
+      <div class="poll-question">{{ poll.question }}</div>
+      {% set total = poll.options | sum(attribute='vote_count') %}
+      {% set max_votes = poll.options | map(attribute='vote_count') | max %}
+      {% for option in poll.options | sort(attribute='vote_count', reverse=True) %}
+        {% set pct = ((option.vote_count / total * 100) | round(1)) if total > 0 else 0 %}
+        {% set is_winner = (option.vote_count == max_votes and max_votes > 0) %}
+        <div class="result-row {% if is_winner %}leading{% endif %}">
+          <div class="result-top">
+            <span class="result-text">{{ option.option_text }}</span>
+            {% if is_winner %}<span class="badge-lead">🏆 Winner → added to menu</span>{% endif %}
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:{{ pct }}%"></div></div>
+          <div class="pct-label">{{ pct }}% &nbsp;·&nbsp; {{ option.vote_count }} vote(s)</div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="back-row">
+      <a href="/student"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+    </div>
+  </div>
 </div>
 </body>
 </html>
