@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>All Bookings – IntelliMess Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .page-wrap { max-width:1100px; margin:28px auto; padding:0 20px 60px; }
+    .page-hdr  { color:#fff; margin-bottom:24px; }
+    .page-hdr h1{ font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-hdr p { font-size:14px; opacity:.85; }
+    .s-card { background:#fff; border-radius:18px; padding:26px 28px; box-shadow:0 4px 16px rgba(0,0,0,.07); }
+    .s-title{ font-size:16px; font-weight:700; color:#333; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; display:flex; align-items:center; gap:8px; }
+    .s-title i { color:#4CAF50; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { background:#f8f8f8; padding:11px 14px; text-align:left; border-bottom:2px solid #eee; font-weight:600; color:#555; }
+    td { padding:11px 14px; border-bottom:1px solid #f5f5f5; color:#444; }
+    tr:hover td { background:#fafafa; }
+    .m-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; color:#fff; }
+    .mb-B{background:#ff9800;}.mb-L{background:#4CAF50;}.mb-S{background:#9c27b0;}.mb-D{background:#1976d2;}
+    .back-link { display:inline-flex; align-items:center; gap:6px; color:#fff; text-decoration:none; font-size:14px; font-weight:500; margin-top:20px; }
+    .back-link:hover { opacity:.8; }
+
+    /* Search bar */
+    .search-bar { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+    .search-bar input, .search-bar select {
+      padding:10px 14px; border:2px solid #e0e0e0; border-radius:10px;
+      font-size:14px; font-family:'Poppins',sans-serif; background:#f9f9f9;
+      transition:all .3s;
+    }
+    .search-bar input { flex:1; min-width:200px; }
+    .search-bar input:focus, .search-bar select:focus { outline:none; border-color:#4CAF50; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/admin/report"><i class="fas fa-file-pdf"></i> Report</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="page-hdr">
+      <h1><i class="fas fa-list"></i> All Bookings</h1>
+      <p>{{ bookings|length }} total bookings on record</p>
+    </div>
+
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-list"></i> Booking Records</div>
+
+      <!-- Live search/filter -->
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="🔍 Search student or roll no…" oninput="filterTable()">
+        <select id="mealFilter" onchange="filterTable()">
+          <option value="">All Meals</option>
+          <option>Breakfast</option><option>Lunch</option>
+          <option>Snacks</option><option>Dinner</option>
+        </select>
+        <select id="foodFilter" onchange="filterTable()">
+          <option value="">All Food Types</option>
+          <option>Veg</option><option>Non-Veg</option>
+        </select>
+      </div>
+
+      {% if bookings %}
+      <div style="overflow-x:auto;">
+        <table id="bkTable">
+          <thead><tr>
+            <th>Student</th><th>Roll No</th><th>Meal</th>
+            <th>Food Type</th><th>Date</th><th>Guests</th>
+          </tr></thead>
+          <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td><strong>{{ b.username }}</strong></td>
+            <td style="color:#888;">{{ b.roll_no }}</td>
+            <td><span class="m-badge mb-{{ b.meal[0] }}">{{ b.meal }}</span></td>
+            <td>{{ b.food_type }}</td>
+            <td>{{ b.booking_date }}</td>
+            <td>{% if b.guest_count and b.guest_count > 0 %}
+              <span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:20px;font-size:11px;">
+                <i class="fas fa-users"></i> {{ b.guest_count }} ({{ b.guest_food_type }})
+              </span>
+            {% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color:#bbb;text-align:center;padding:30px;">No bookings yet.</p>
+      {% endif %}
+    </div>
+
+    <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+  </div>
+</div>
+<script>
+function filterTable() {
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  const meal = document.getElementById('mealFilter').value.toLowerCase();
+  const food = document.getElementById('foodFilter').value.toLowerCase();
+  document.querySelectorAll('#bkTable tbody tr').forEach(row => {
+    const text = row.innerText.toLowerCase();
+    const mealMatch = !meal || text.includes(meal);
+    const foodMatch = !food || text.includes(food);
+    const qMatch    = !q || text.includes(q);
+    row.style.display = (mealMatch && foodMatch && qMatch) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

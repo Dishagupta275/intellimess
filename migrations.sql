@@ -58,3 +58,26 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 -- run ONLY this line to add the winner_dish column:
 -- -----------------------------------------------
 -- ALTER TABLE polls ADD COLUMN winner_dish VARCHAR(150) NULL;
+
+-- ── Dish Suggestions (student → admin) ──────────────────────────
+CREATE TABLE IF NOT EXISTS dish_suggestions (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    user_id      INT NOT NULL,
+    dish_name    VARCHAR(150) NOT NULL,
+    meal         ENUM('Breakfast','Lunch','Snacks','Dinner') NOT NULL,
+    reason       TEXT,
+    votes        INT DEFAULT 0,
+    status       ENUM('pending','noted','declined') DEFAULT 'pending',
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Upvotes table so each student can vote once per suggestion
+CREATE TABLE IF NOT EXISTS suggestion_votes (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    suggestion_id INT NOT NULL,
+    user_id       INT NOT NULL,
+    UNIQUE KEY uq_sugvote (suggestion_id, user_id),
+    FOREIGN KEY (suggestion_id) REFERENCES dish_suggestions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

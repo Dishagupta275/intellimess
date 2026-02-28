@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analytics – IntelliMess Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .page-wrap  { max-width:1100px; margin:28px auto; padding:0 20px 60px; }
+    .page-hdr   { color:#fff; margin-bottom:24px; }
+    .page-hdr h1{ font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-hdr p { font-size:14px; opacity:.85; }
+    .s-card { background:#fff; border-radius:18px; padding:26px 28px; box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:24px; }
+    .s-title{ font-size:16px; font-weight:700; color:#333; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; display:flex; align-items:center; gap:8px; }
+    .s-title i { color:#4CAF50; }
+    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; }
+    .chart-box { background:#fff; border-radius:16px; padding:22px; box-shadow:0 4px 16px rgba(0,0,0,.07); }
+    .chart-box h4 { font-size:13px; font-weight:700; color:#666; margin-bottom:14px; }
+    .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:24px; }
+    .stat-pill { background:#fff; border-radius:14px; padding:20px 16px; text-align:center; box-shadow:0 4px 14px rgba(0,0,0,.07); }
+    .stat-pill .val { font-size:26px; font-weight:700; }
+    .stat-pill .lbl { font-size:12px; color:#888; margin-top:3px; }
+    .back-link { color:#fff; text-decoration:none; font-size:14px; font-weight:500; }
+    .back-link:hover { opacity:.8; }
+    .dish-list li { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #f5f5f5; font-size:14px; }
+    .dish-list li:last-child { border:none; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/admin/report"><i class="fas fa-file-pdf"></i> Report</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="page-hdr">
+      <h1><i class="fas fa-chart-bar"></i> Analytics</h1>
+      <p>Booking trends, meal preferences, satisfaction scores and dish ratings</p>
+    </div>
+
+    <!-- KEY STATS -->
+    <div class="stat-row">
+      <div class="stat-pill"><div class="val" style="color:#4CAF50;">{{ overall if overall else '—' }}</div><div class="lbl">Overall Avg Rating / 5</div></div>
+      <div class="stat-pill"><div class="val" style="color:#1976d2;">{{ feedback_rate }}%</div><div class="lbl">Feedback Rate</div></div>
+      {% if dish_stats %}
+      <div class="stat-pill"><div class="val" style="color:#FF9800;">{{ dish_stats[0].avg_rating|round(1) }}</div><div class="lbl">🏆 Best Dish Rating</div></div>
+      <div class="stat-pill"><div class="val" style="color:#ef5350;">{{ dish_stats[-1].avg_rating|round(1) }}</div><div class="lbl">⚠ Lowest Dish Rating</div></div>
+      {% endif %}
+    </div>
+
+    <!-- CHARTS GRID -->
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-chart-line"></i> Booking Trends</div>
+      <div class="charts-grid">
+        <div class="chart-box">
+          <h4>🗓 Bookings – Last 7 Days</h4>
+          <canvas id="trendChart" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h4>🍽 Bookings by Meal</h4>
+          <canvas id="mealChart" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h4>🌿 Veg vs Non-Veg</h4>
+          <canvas id="foodChart" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h4>⭐ Rating Distribution (1–5 Stars)</h4>
+          <canvas id="ratingDistChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEAL SATISFACTION -->
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-smile"></i> Satisfaction by Meal</div>
+      {% if meal_satisfaction %}
+      <canvas id="mealSatChart" height="80"></canvas>
+      {% else %}
+      <p style="color:#bbb;text-align:center;padding:20px;">No feedback data yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- DISH RATINGS -->
+    {% if dish_stats %}
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-star"></i> Dish Ratings</div>
+      <canvas id="dishRatingChart" height="80" style="margin-bottom:20px;"></canvas>
+      <ul class="dish-list" style="list-style:none;">
+        {% for dish in dish_stats %}
+        <li>
+          <span style="font-weight:600;color:#333;">{% if loop.first %}🏆 {% endif %}{{ dish.dish_name }} <span style="font-size:11px;color:#aaa;">({{ dish.total_reviews }} reviews)</span></span>
+          <span style="color:#FF9800;font-weight:700;">{{ dish.avg_rating|round(1) }} ★</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+  </div>
+</div>
+<script>
+const C = {green:'#4CAF50',orange:'#FF9800',purple:'#9c27b0',blue:'#1976d2',red:'#ef5350',grey:'#bdbdbd'};
+const trend = {{ booking_trend|tojson }};
+new Chart(document.getElementById('trendChart'),{type:'line',data:{
+  labels:trend.map(r=>{const d=new Date(r.bdate);return d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});}),
+  datasets:[{label:'Bookings',data:trend.map(r=>r.count),borderColor:C.green,backgroundColor:'rgba(76,175,80,.1)',fill:true,tension:.4,pointRadius:5,pointBackgroundColor:C.green}]
+},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+const meals={{meal_stats|tojson}};
+const mc={Breakfast:C.orange,Lunch:C.green,Snacks:C.purple,Dinner:C.blue};
+new Chart(document.getElementById('mealChart'),{type:'bar',data:{labels:meals.map(r=>r.meal),datasets:[{data:meals.map(r=>r.count),backgroundColor:meals.map(r=>mc[r.meal]||C.grey),borderRadius:8}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+const food={{food_stats|tojson}};
+new Chart(document.getElementById('foodChart'),{type:'doughnut',data:{labels:food.map(r=>r.food_type),datasets:[{data:food.map(r=>r.count),backgroundColor:[C.green,C.red],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom'}}}});
+
+const rd={{rating_dist|tojson}};
+new Chart(document.getElementById('ratingDistChart'),{type:'bar',data:{labels:['1 ★','2 ★','3 ★','4 ★','5 ★'],datasets:[{data:['1','2','3','4','5'].map(k=>rd[k]||0),backgroundColor:['#ef5350','#ff9800','#ffc107','#8bc34a',C.green],borderRadius:8}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+{% if meal_satisfaction %}
+const msat={{meal_satisfaction|tojson}};
+new Chart(document.getElementById('mealSatChart'),{type:'bar',data:{labels:msat.map(r=>`${r.meal} (${r.total} reviews)`),datasets:[{label:'Avg Rating',data:msat.map(r=>parseFloat(r.avg_rating).toFixed(2)),backgroundColor:msat.map(r=>r.avg_rating>=4?C.green:r.avg_rating>=3?C.orange:C.red),borderRadius:8}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{min:0,max:5,ticks:{stepSize:1}}}}});
+{% endif %}
+
+{% if dish_stats %}
+const dishes={{dish_stats|tojson}};
+new Chart(document.getElementById('dishRatingChart'),{type:'bar',data:{labels:dishes.map(r=>r.dish_name),datasets:[{label:'Avg Rating',data:dishes.map(r=>parseFloat(r.avg_rating).toFixed(2)),backgroundColor:dishes.map(r=>r.avg_rating>=4?C.green:r.avg_rating>=3?C.orange:C.red),borderRadius:8}]},options:{plugins:{legend:{display:false}},scales:{y:{min:0,max:5,ticks:{stepSize:1}}}}});
+{% endif %}
+</script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dish Suggestions – IntelliMess</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .sug-wrap  { max-width:900px; margin:28px auto; padding:0 20px 60px; }
+
+    /* Submit form card */
+    .submit-card { background:#fff; border-radius:18px; padding:28px 30px;
+                   box-shadow:var(--shadow); margin-bottom:28px; }
+    .submit-card h3 { font-size:17px; font-weight:700; color:#333; margin-bottom:18px;
+                      padding-bottom:12px; border-bottom:2px solid #f0f0f0; }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .form-field { display:flex; flex-direction:column; gap:6px; }
+    .form-field.full { grid-column:1/-1; }
+    .form-field label { font-size:13px; font-weight:600; color:#555; }
+    .form-field input, .form-field select, .form-field textarea {
+      padding:11px 14px; border:2px solid #e0e0e0; border-radius:10px;
+      font-size:14px; font-family:'Poppins',sans-serif; background:#f9f9f9;
+      transition:all .3s; resize:none;
+    }
+    .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+      outline:none; border-color:#f59e0b; background:#fff;
+      box-shadow:0 0 0 4px rgba(245,158,11,.1);
+    }
+    .submit-btn { margin-top:6px; padding:12px 28px;
+                  background:linear-gradient(135deg,#f59e0b,#d97706);
+                  color:#fff; border:none; border-radius:10px;
+                  font-size:14px; font-weight:600; font-family:'Poppins',sans-serif;
+                  cursor:pointer; transition:all .3s; }
+    .submit-btn:hover { transform:translateY(-2px); box-shadow:0 4px 15px rgba(245,158,11,.35); }
+
+    /* Tab toggle */
+    .tabs { display:flex; gap:10px; margin-bottom:20px; }
+    .tab-btn { padding:9px 20px; border-radius:20px; font-size:13px; font-weight:600;
+               border:2px solid #e0e0e0; background:#fff; color:#888; cursor:pointer; transition:all .3s; }
+    .tab-btn.active { background:#f59e0b; border-color:#f59e0b; color:#fff; }
+
+    /* Suggestion cards */
+    .sug-list { display:flex; flex-direction:column; gap:14px; }
+    .sug-card { background:#fff; border-radius:14px; padding:18px 22px;
+                box-shadow:0 2px 12px rgba(0,0,0,.06); display:flex;
+                align-items:flex-start; gap:16px; transition:all .3s; }
+    .sug-card:hover { box-shadow:0 4px 18px rgba(0,0,0,.1); transform:translateY(-2px); }
+    .vote-col { display:flex; flex-direction:column; align-items:center; gap:4px; flex-shrink:0; }
+    .vote-count { font-size:22px; font-weight:700; color:#333; line-height:1; }
+    .vote-label { font-size:10px; color:#aaa; }
+    .upvote-btn { background:none; border:2px solid #e0e0e0; border-radius:8px;
+                  padding:5px 10px; font-size:13px; cursor:pointer; color:#888;
+                  transition:all .3s; }
+    .upvote-btn:hover { border-color:#f59e0b; color:#f59e0b; }
+    .upvote-btn.voted { background:#fff7ed; border-color:#f59e0b; color:#f59e0b; }
+    .upvote-btn.mine  { opacity:.4; cursor:not-allowed; }
+    .sug-body { flex:1; min-width:0; }
+    .sug-top  { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    .sug-dish { font-size:16px; font-weight:700; color:#333; }
+    .meal-chip { font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; color:#fff; }
+    .mc-B{background:#FF9800;}.mc-L{background:#4CAF50;}.mc-S{background:#9c27b0;}.mc-D{background:#1976d2;}
+    .sug-reason { font-size:13px; color:#666; margin-bottom:8px; font-style:italic; }
+    .sug-meta   { font-size:11px; color:#aaa; }
+    .status-badge { font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; margin-left:6px; }
+    .sb-pending  { background:#fff3cd; color:#856404; }
+    .sb-noted    { background:#d1fae5; color:#065f46; }
+    .sb-declined { background:#fce4ec; color:#c62828; }
+
+    /* My suggestions tab */
+    .my-sug-card { background:#fff; border-radius:12px; padding:16px 20px;
+                   box-shadow:0 2px 10px rgba(0,0,0,.05); margin-bottom:12px;
+                   display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+
+    .empty-state { text-align:center; padding:50px 20px; color:#bbb; }
+    .empty-state i { font-size:48px; display:block; margin-bottom:12px; }
+
+    @media(max-width:600px){ .form-grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+      <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+      <a href="/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="sug-wrap">
+
+    <!-- SUBMIT FORM -->
+    <div class="submit-card">
+      <h3><i class="fas fa-lightbulb" style="color:#f59e0b;margin-right:8px;"></i>Suggest a Dish</h3>
+      <form method="POST" action="/suggestions/submit">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Dish Name <span style="color:#e53935;">*</span></label>
+            <input type="text" name="dish_name" placeholder="e.g. Chole Bhature" required maxlength="150">
+          </div>
+          <div class="form-field">
+            <label>For Which Meal? <span style="color:#e53935;">*</span></label>
+            <select name="meal" required>
+              <option value="">— select —</option>
+              <option>Breakfast</option>
+              <option>Lunch</option>
+              <option>Snacks</option>
+              <option>Dinner</option>
+            </select>
+          </div>
+          <div class="form-field full">
+            <label>Why do you want this? <span style="font-weight:400;color:#aaa;">(optional)</span></label>
+            <textarea name="reason" rows="2" placeholder="e.g. Haven't had it in months and everyone loves it…"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <button type="submit" class="submit-btn"><i class="fas fa-paper-plane"></i> Submit Suggestion</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="showTab('all',this)">
+        <i class="fas fa-fire"></i> All Suggestions
+        {% if suggestions %}<span style="margin-left:5px;background:rgba(0,0,0,.1);padding:1px 7px;border-radius:20px;font-size:11px;">{{ suggestions|length }}</span>{% endif %}
+      </button>
+      <button class="tab-btn" onclick="showTab('mine',this)">
+        <i class="fas fa-user"></i> My Suggestions
+        {% if my_suggestions %}<span style="margin-left:5px;background:rgba(0,0,0,.1);padding:1px 7px;border-radius:20px;font-size:11px;">{{ my_suggestions|length }}</span>{% endif %}
+      </button>
+    </div>
+
+    <!-- ALL SUGGESTIONS -->
+    <div id="tab-all">
+      {% if suggestions %}
+      <div class="sug-list">
+        {% for s in suggestions %}
+        <div class="sug-card">
+          <!-- Upvote column -->
+          <div class="vote-col">
+            <div class="vote-count">{{ s.votes }}</div>
+            <div class="vote-label">votes</div>
+            {% if s.is_mine %}
+              <button class="upvote-btn mine" disabled title="Can't upvote your own suggestion">
+                <i class="fas fa-thumbs-up"></i>
+              </button>
+            {% elif s.user_voted %}
+              <button class="upvote-btn voted" disabled>
+                <i class="fas fa-thumbs-up"></i> Voted
+              </button>
+            {% else %}
+              <form method="POST" action="/suggestions/upvote/{{ s.id }}" style="margin:0;">
+                <button type="submit" class="upvote-btn" title="Upvote this suggestion">
+                  <i class="fas fa-thumbs-up"></i>
+                </button>
+              </form>
+            {% endif %}
+          </div>
+
+          <!-- Body -->
+          <div class="sug-body">
+            <div class="sug-top">
+              <span class="sug-dish">{{ s.dish_name }}</span>
+              <span class="meal-chip mc-{{ s.meal[0] }}">{{ s.meal }}</span>
+              <span class="status-badge sb-{{ s.status }}">
+                {% if s.status=='noted' %}✓ Noted by Admin{% elif s.status=='declined' %}✗ Declined{% else %}⏳ Pending{% endif %}
+              </span>
+              {% if s.is_mine %}<span style="font-size:11px;color:#aaa;">· your suggestion</span>{% endif %}
+            </div>
+            {% if s.reason %}
+            <div class="sug-reason">"{{ s.reason }}"</div>
+            {% endif %}
+            <div class="sug-meta">
+              Suggested by <strong>{{ s.username }}</strong> ·
+              {{ s.submitted_at.strftime('%d %b %Y') if s.submitted_at else '' }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <i class="fas fa-lightbulb" style="color:#f59e0b;"></i>
+        <strong style="color:#aaa;font-size:16px;">No suggestions yet!</strong>
+        <p style="font-size:13px;margin-top:6px;">Be the first to suggest a dish you'd love to eat.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- MY SUGGESTIONS -->
+    <div id="tab-mine" style="display:none;">
+      {% if my_suggestions %}
+        {% for s in my_suggestions %}
+        <div class="my-sug-card">
+          <div>
+            <strong style="color:#333;font-size:15px;">{{ s.dish_name }}</strong>
+            <span class="meal-chip mc-{{ s.meal[0] }}" style="margin-left:8px;">{{ s.meal }}</span>
+            {% if s.reason %}
+            <div style="font-size:12px;color:#888;margin-top:4px;font-style:italic;">"{{ s.reason }}"</div>
+            {% endif %}
+            <div style="font-size:11px;color:#aaa;margin-top:4px;">
+              Submitted {{ s.submitted_at.strftime('%d %b %Y') if s.submitted_at else '' }}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:13px;color:#666;"><i class="fas fa-thumbs-up" style="color:#f59e0b;"></i> {{ s.votes }}</span>
+            <span class="status-badge sb-{{ s.status }}">
+              {% if s.status=='noted' %}✓ Noted{% elif s.status=='declined' %}✗ Declined{% else %}⏳ Pending{% endif %}
+            </span>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <i class="fas fa-inbox" style="color:#ddd;"></i>
+        <strong style="color:#aaa;">You haven't suggested anything yet.</strong>
+        <p style="font-size:13px;margin-top:6px;">Use the form above to suggest a dish!</p>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+<script>
+function showTab(tab, btn) {
+  document.getElementById('tab-all').style.display  = tab==='all'  ? 'block' : 'none';
+  document.getElementById('tab-mine').style.display = tab==='mine' ? 'block' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

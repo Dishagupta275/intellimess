@@ -82,42 +82,36 @@ def student_dashboard():
         return redirect('/login')
 
     # ---- Meal reminder banner ----
+    # Each entry: (meal_name, booking_closes_hour, booking_closes_minute)
+    # Booking closes X hours before the meal is served
     now = datetime.now()
-    meal_schedule = [
-        ("Breakfast", 8,  {"Breakfast": (6,0),  "other": None}),
-        ("Lunch",     13, {"Lunch": None,        "other": (9,0)}),
-        ("Snacks",    16, {"Snacks": None,        "other": (12,0)}),
-        ("Dinner",    20, {"Dinner": (16,30),    "other": (16,0)}),
+    meal_closing = [
+        ("Breakfast", 6,  0),   # booking closes at 06:00
+        ("Lunch",     9,  0),   # booking closes at 09:00
+        ("Snacks",    12, 0),   # booking closes at 12:00
+        ("Dinner",    16, 30),  # booking closes at 16:30
     ]
-    # Closing times per meal
-    closing = {
-        "Breakfast": now.replace(hour=6, minute=0, second=0, microsecond=0),
-        "Lunch":     now.replace(hour=9, minute=0, second=0, microsecond=0),
-        "Snacks":    now.replace(hour=12, minute=0, second=0, microsecond=0),
-        "Dinner":    now.replace(hour=16, minute=30, second=0, microsecond=0),
-    }
-    meal_hours = {"Breakfast": 8, "Lunch": 13, "Snacks": 16, "Dinner": 20}
 
     reminder = None
-    for meal, hour, _ in meal_schedule:
-        meal_time  = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-        close_time = closing[meal]
+    for meal, close_h, close_m in meal_closing:
+        close_time = now.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
         if now < close_time:
+            # Booking window is still open for this meal — show reminder
             mins_left = int((close_time - now).total_seconds() / 60)
-            if mins_left <= 180:  # show reminder if closing within 3 hours
-                if mins_left >= 60:
-                    time_str = f"{mins_left // 60}h {mins_left % 60}m"
-                else:
-                    time_str = f"{mins_left} minutes"
-                reminder = {
-                    "meal": meal,
-                    "time_str": time_str,
-                    "urgent": mins_left <= 30,
-                }
-            break
-        elif now < meal_time:
-            break  # meal not yet closeable, no reminder needed
+            if mins_left >= 60:
+                h = mins_left // 60
+                m = mins_left % 60
+                time_str = f"{h}h {m}m" if m else f"{h}h"
+            else:
+                time_str = f"{mins_left} min"
+            reminder = {
+                "meal":     meal,
+                "time_str": time_str,
+                "urgent":   mins_left <= 30,
+            }
+            break  # only show the next upcoming closing, not all of them
 
+    # If all meal windows have closed for today, no reminder
     return render_template("student.html",
         username=session.get('username', ''),
         reminder=reminder
@@ -127,26 +121,28 @@ def student_dashboard():
 @app.route('/menu')
 def menu():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
     meal_times = [("Breakfast","07:30"),("Lunch","11:45"),("Snacks","16:30"),("Dinner","19:30")]
     now = datetime.now()
     today = now.strftime("%A")
     current_time = now.strftime("%H:%M")
     next_meals = []
     day_index = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    today_date = now.date()
     start_day = day_index.index(today)
     i = 0
     while len(next_meals) < 4:
         day = day_index[(start_day + i) % 7]
+        actual_date = today_date + timedelta(days=i)
         for meal, time in meal_times:
             if i == 0 and time <= current_time:
                 continue
-            next_meals.append((day, meal))
+            next_meals.append((day, actual_date, meal))
             if len(next_meals) == 4:
                 break
         i += 1
     menu_data = []
-    for day, meal in next_meals:
+    for day, actual_date, meal in next_meals:
         cursor.execute("""
             SELECT d.dish_name FROM weekly_menu wm
             JOIN menu_items mi ON wm.id = mi.weekly_menu_id
@@ -154,7 +150,17 @@ def menu():
             WHERE wm.day_of_week = %s AND wm.meal = %s
         """, (day, meal))
         dishes = [row['dish_name'] for row in cursor.fetchall()]
-        menu_data.append({"day": day, "meal": meal, "dishes": dishes})
+        # Option C: poll winner shown as special dish for this specific date
+        cursor.execute("""
+            SELECT winner_dish FROM polls
+            WHERE poll_date = %s AND meal = %s
+            AND status = 'closed' AND winner_dish IS NOT NULL
+            ORDER BY id DESC LIMIT 1
+        """, (actual_date, meal))
+        poll_winner = cursor.fetchone()
+        special = poll_winner['winner_dish'] if poll_winner else None
+        menu_data.append({"day": day, "date": actual_date, "meal": meal,
+                          "dishes": dishes, "special": special})
     cursor.close()
     conn.close()
     return render_template("menu.html", menu_data=menu_data)
@@ -203,7 +209,7 @@ def book():
     if meal == "Breakfast":
         closing_time = meal_datetime.replace(hour=6, minute=0)
     elif meal == "Dinner":
-        closing_time = meal_datetime.replace(hour=16, minute=30)
+        closing_time = meal_datetime.replace(hour=19, minute=30)
     else:
         closing_time = meal_datetime - timedelta(hours=4)
 
@@ -375,84 +381,20 @@ def close_poll(poll_id):
         return redirect('/login')
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-
-    # Find the winning option
+    # Find winning option — just save winner_dish on the poll row (Option C)
     cursor.execute("""
-        SELECT po.id as option_id, po.option_text,
-               p.meal, p.poll_date, COUNT(pv.id) as vote_count
+        SELECT po.option_text, COUNT(pv.id) as vote_count
         FROM poll_options po
         LEFT JOIN poll_votes pv ON po.id = pv.option_id
-        JOIN polls p ON p.id = po.poll_id
         WHERE po.poll_id = %s
-        GROUP BY po.id
-        ORDER BY vote_count DESC
-        LIMIT 1
+        GROUP BY po.id ORDER BY vote_count DESC LIMIT 1
     """, (poll_id,))
     winner = cursor.fetchone()
-
-    # Add winning dish to menu if it exists and has votes
-    if winner and winner['vote_count'] > 0:
-        poll_date = winner['poll_date']
-        # Get day name from poll_date
-        if isinstance(poll_date, str):
-            from datetime import datetime as dt
-            poll_date = dt.strptime(poll_date, '%Y-%m-%d').date()
-        day_name = poll_date.strftime('%A')
-        meal = winner['meal']
-        dish_name = winner['option_text']
-
-        # Insert dish if not already in dishes table
-        cursor2 = conn.cursor(dictionary=True, buffered=True)
-        cursor2.execute("SELECT id FROM dishes WHERE dish_name = %s", (dish_name,))
-        existing_dish = cursor2.fetchone()
-        if existing_dish:
-            dish_id = existing_dish['id']
-        else:
-            cursor3 = conn.cursor()
-            cursor3.execute("INSERT INTO dishes (dish_name) VALUES (%s)", (dish_name,))
-            conn.commit()
-            dish_id = cursor3.lastrowid
-            cursor3.close()
-
-        # Find or create weekly_menu entry for that day+meal
-        cursor2.execute("""
-            SELECT id FROM weekly_menu WHERE day_of_week = %s AND meal = %s
-        """, (day_name, meal))
-        menu_entry = cursor2.fetchone()
-        if menu_entry:
-            menu_id = menu_entry['id']
-        else:
-            cursor3 = conn.cursor()
-            cursor3.execute("INSERT INTO weekly_menu (day_of_week, meal) VALUES (%s, %s)", (day_name, meal))
-            conn.commit()
-            menu_id = cursor3.lastrowid
-            cursor3.close()
-
-        # Add dish to menu_items if not already there
-        cursor2.execute("""
-            SELECT 1 FROM menu_items WHERE weekly_menu_id = %s AND dish_id = %s
-        """, (menu_id, dish_id))
-        if not cursor2.fetchone():
-            cursor3 = conn.cursor()
-            cursor3.execute("INSERT INTO menu_items (weekly_menu_id, dish_id) VALUES (%s, %s)", (menu_id, dish_id))
-            conn.commit()
-            cursor3.close()
-
-        cursor2.close()
-
-        # Save winner info on poll for display
-        cursor4 = conn.cursor()
-        cursor4.execute("UPDATE polls SET status='closed', winner_dish=%s WHERE id=%s", (dish_name, poll_id))
-        conn.commit()
-        cursor4.close()
-    else:
-        cursor5 = conn.cursor()
-        cursor5.execute("UPDATE polls SET status='closed' WHERE id=%s", (poll_id,))
-        conn.commit()
-        cursor5.close()
-
-    cursor.close()
-    conn.close()
+    dish_name = winner['option_text'] if winner and winner['vote_count'] > 0 else None
+    c = conn.cursor()
+    c.execute("UPDATE polls SET status='closed', winner_dish=%s WHERE id=%s", (dish_name, poll_id))
+    conn.commit()
+    c.close(); cursor.close(); conn.close()
     return redirect('/admin/polls')
 
 @app.route('/polls')
@@ -464,64 +406,26 @@ def polls():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
 
-    # Auto-close expired polls and update menu with winner
+    # Auto-close expired polls — just save winner_dish (Option C, no menu pollution)
     cursor.execute("""
         SELECT id FROM polls
-        WHERE status='open'
-        AND CONCAT(poll_date, ' ', closing_time) < %s
+        WHERE status='open' AND CONCAT(poll_date, ' ', closing_time) < %s
     """, (now.strftime('%Y-%m-%d %H:%M:%S'),))
     expired = cursor.fetchall()
     for ep in expired:
-        # Trigger close logic by calling internally
-        conn2 = get_db_connection()
-        c2 = conn2.cursor(dictionary=True, buffered=True)
+        c2 = conn.cursor(dictionary=True, buffered=True)
         c2.execute("""
-            SELECT po.id as option_id, po.option_text,
-                   p.meal, p.poll_date, COUNT(pv.id) as vote_count
+            SELECT po.option_text, COUNT(pv.id) as vote_count
             FROM poll_options po
             LEFT JOIN poll_votes pv ON po.id = pv.option_id
-            JOIN polls p ON p.id = po.poll_id
-            WHERE po.poll_id = %s
-            GROUP BY po.id ORDER BY vote_count DESC LIMIT 1
+            WHERE po.poll_id = %s GROUP BY po.id ORDER BY vote_count DESC LIMIT 1
         """, (ep['id'],))
         winner = c2.fetchone()
-        if winner and winner['vote_count'] > 0:
-            poll_date = winner['poll_date']
-            if isinstance(poll_date, str):
-                poll_date = datetime.strptime(poll_date, '%Y-%m-%d').date()
-            day_name = poll_date.strftime('%A')
-            meal = winner['meal']
-            dish_name = winner['option_text']
-            c2.execute("SELECT id FROM dishes WHERE dish_name=%s", (dish_name,))
-            d = c2.fetchone()
-            c3 = conn2.cursor()
-            if d:
-                dish_id = d['id']
-            else:
-                c3.execute("INSERT INTO dishes (dish_name) VALUES (%s)", (dish_name,))
-                conn2.commit()
-                dish_id = c3.lastrowid
-            c2.execute("SELECT id FROM weekly_menu WHERE day_of_week=%s AND meal=%s", (day_name, meal))
-            m = c2.fetchone()
-            if m:
-                menu_id = m['id']
-            else:
-                c3.execute("INSERT INTO weekly_menu (day_of_week, meal) VALUES (%s, %s)", (day_name, meal))
-                conn2.commit()
-                menu_id = c3.lastrowid
-            c2.execute("SELECT 1 FROM menu_items WHERE weekly_menu_id=%s AND dish_id=%s", (menu_id, dish_id))
-            if not c2.fetchone():
-                c3.execute("INSERT INTO menu_items (weekly_menu_id, dish_id) VALUES (%s, %s)", (menu_id, dish_id))
-            c3.execute("UPDATE polls SET status='closed', winner_dish=%s WHERE id=%s", (dish_name, ep['id']))
-            conn2.commit()
-            c3.close()
-        else:
-            c3 = conn2.cursor()
-            c3.execute("UPDATE polls SET status='closed' WHERE id=%s", (ep['id'],))
-            conn2.commit()
-            c3.close()
-        c2.close()
-        conn2.close()
+        dish_name = winner['option_text'] if winner and winner['vote_count'] > 0 else None
+        c3 = conn.cursor()
+        c3.execute("UPDATE polls SET status='closed', winner_dish=%s WHERE id=%s", (dish_name, ep['id']))
+        conn.commit()
+        c2.close(); c3.close()
 
     # Open polls — show ALL polls with future closing time
     cursor.execute("""
@@ -685,170 +589,29 @@ def admin():
     veg_count = int(ms['veg_students'] or 0) + int(ms['veg_guests'] or 0)
     nonveg_count = int(ms['nonveg_students'] or 0) + int(ms['nonveg_guests'] or 0)
 
-    # ---- DISH RATINGS + SENTIMENT ANALYSIS ----
-    cursor.execute("""
-        SELECT d.dish_name,
-               AVG(f.rating) as avg_rating,
-               COUNT(f.id) as total_reviews,
-               GROUP_CONCAT(f.comment SEPARATOR '||||') as all_comments
-        FROM feedback f
-        JOIN dishes d ON f.dish_id = d.id
-        GROUP BY d.dish_name
-        ORDER BY avg_rating DESC
-    """)
-    raw_dish_stats = cursor.fetchall() or []
-
-    dish_stats = []
-    for dish in raw_dish_stats:
-        comments_raw = dish['all_comments'] or ''
-        comments = [c.strip() for c in comments_raw.split('||||') if c.strip()]
-        pos = neg = neu = 0
-        notable_positive = []
-        notable_negative = []
-        for c in comments:
-            sentiment, score = analyze_sentiment(c)
-            if sentiment == 'Positive':
-                pos += 1
-                if len(notable_positive) < 2:
-                    notable_positive.append(c)
-            elif sentiment == 'Negative':
-                neg += 1
-                if len(notable_negative) < 2:
-                    notable_negative.append(c)
-            else:
-                neu += 1
-        total_c = pos + neg + neu
-        sentiment_pct = {
-            'positive': round(pos / total_c * 100) if total_c else 0,
-            'negative': round(neg / total_c * 100) if total_c else 0,
-            'neutral': round(neu / total_c * 100) if total_c else 0,
-        }
-        # Overall label
-        if total_c == 0:
-            overall_sentiment = 'No comments'
-        elif pos >= neg and pos >= neu:
-            overall_sentiment = 'Mostly Positive'
-        elif neg >= pos and neg >= neu:
-            overall_sentiment = 'Needs Improvement'
-        else:
-            overall_sentiment = 'Mixed'
-
-        dish_stats.append({
-            'dish_name': dish['dish_name'],
-            'avg_rating': dish['avg_rating'],
-            'total_reviews': dish['total_reviews'],
-            'sentiment': overall_sentiment,
-            'sentiment_pct': sentiment_pct,
-            'notable_positive': notable_positive,
-            'notable_negative': notable_negative,
-            'comment_count': total_c,
-        })
-
-    most_liked = dish_stats[0] if dish_stats else None
-    least_liked = dish_stats[-1] if dish_stats else None
-
-    cursor.execute("SELECT AVG(rating) as overall FROM feedback")
-    overall_row = cursor.fetchone()
-    overall = round(float(overall_row['overall']), 2) if overall_row and overall_row['overall'] else 0
-
-    # ---- BOOKINGS OVER LAST 7 DAYS (trend chart) ----
-    cursor.execute("""
-        SELECT DATE(booking_date) as bdate, COUNT(*) as count
-        FROM bookings
-        WHERE booking_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-        GROUP BY DATE(booking_date)
-        ORDER BY bdate ASC
-    """)
-    booking_trend = cursor.fetchall() or []
-
-    # ---- MEAL-WISE BOOKINGS ----
-    cursor.execute("SELECT meal, COUNT(*) as count FROM bookings GROUP BY meal")
-    meal_stats = cursor.fetchall() or []
-
-    # ---- VEG vs NONVEG ----
-    cursor.execute("SELECT food_type, COUNT(*) as count FROM bookings GROUP BY food_type")
-    food_stats = cursor.fetchall() or []
-
-    # ---- RATING DISTRIBUTION (how many 1s, 2s, 3s, 4s, 5s) ----
-    cursor.execute("""
-        SELECT rating, COUNT(*) as count FROM feedback
-        GROUP BY rating ORDER BY rating ASC
-    """)
-    rating_dist_raw = cursor.fetchall() or []
-    rating_dist = {str(r['rating']): r['count'] for r in rating_dist_raw}
-
-    # ---- MEAL SATISFACTION SCORES ----
-    cursor.execute("""
-        SELECT wm.meal, AVG(f.rating) as avg_rating, COUNT(f.id) as total
-        FROM feedback f
-        JOIN bookings b ON f.booking_id = b.id
-        JOIN weekly_menu wm ON wm.meal = b.meal
-        GROUP BY wm.meal
-        ORDER BY avg_rating DESC
-    """)
-    meal_satisfaction = cursor.fetchall() or []
-
-    # ---- FEEDBACK PARTICIPATION RATE ----
+    # lightweight queries only — heavy analytics moved to sub-pages
     cursor.execute("SELECT COUNT(*) as total FROM bookings")
-    total_bookings = cursor.fetchone()['total'] or 1
-    cursor.execute("SELECT COUNT(DISTINCT booking_id) as fb FROM feedback")
-    total_feedback_bookings = cursor.fetchone()['fb'] or 0
-    feedback_rate = round(total_feedback_bookings / total_bookings * 100, 1)
-
+    bookings_total = cursor.fetchone()['total'] or 0
     cursor.execute("SELECT COUNT(*) as cnt FROM polls WHERE status='open'")
     open_polls_count = cursor.fetchone()['cnt']
-
-    # ---- BOOKING HEATMAP (day x meal) ----
-    cursor.execute("""
-        SELECT DAYNAME(booking_date) as day_name, meal, COUNT(*) as count
-        FROM bookings
-        GROUP BY DAYNAME(booking_date), meal
-    """)
-    heatmap_raw = cursor.fetchall() or []
-    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
-    heatmap = {d: {m: 0 for m in meals_order} for d in days_order}
-    heatmap_max = 1
-    for row in heatmap_raw:
-        d, m, c = row['day_name'], row['meal'], row['count']
-        if d in heatmap and m in heatmap[d]:
-            heatmap[d][m] = c
-            if c > heatmap_max:
-                heatmap_max = c
-
-    # ---- DISH COMEBACK SUGGESTIONS ----
-    # Dishes rated >= 4.0 avg but not served in last 14 days
-    cursor.execute("""
-        SELECT d.dish_name, AVG(f.rating) as avg_rating,
-               MAX(b.booking_date) as last_served
-        FROM feedback f
-        JOIN dishes d ON f.dish_id = d.id
-        JOIN bookings b ON f.booking_id = b.id
-        GROUP BY d.dish_name
-        HAVING avg_rating >= 4.0
-           AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-        ORDER BY avg_rating DESC
-    """)
-    comeback_dishes = cursor.fetchall() or []
+    cursor.execute("SELECT AVG(rating) as overall FROM feedback")
+    ov = cursor.fetchone()
+    overall_avg = round(float(ov['overall']), 2) if ov and ov['overall'] else 0
+    cursor.execute("SELECT COUNT(*) as total FROM bookings")
+    total_bk = cursor.fetchone()['total'] or 1
+    cursor.execute("SELECT COUNT(DISTINCT booking_id) as fb FROM feedback")
+    fb_bk = cursor.fetchone()['fb'] or 0
+    feedback_rate = round(fb_bk / total_bk * 100, 1)
 
     cursor.close()
     conn.close()
 
     return render_template("admin.html",
-        bookings=bookings, dish_stats=dish_stats,
-        most_liked=most_liked, least_liked=least_liked,
-        overall=overall, next_meal=next_meal, next_meal_date=today_date,
+        next_meal=next_meal, next_meal_date=today_date,
         next_meal_count=next_meal_count, student_count=student_count,
         total_guests=total_guests, veg_count=veg_count, nonveg_count=nonveg_count,
-        meal_stats=meal_stats, food_stats=food_stats,
-        open_polls_count=open_polls_count,
-        booking_trend=booking_trend,
-        rating_dist=rating_dist,
-        meal_satisfaction=meal_satisfaction,
-        feedback_rate=feedback_rate,
-        heatmap=heatmap, heatmap_max=heatmap_max,
-        days_order=days_order, meals_order=meals_order,
-        comeback_dishes=comeback_dishes
+        bookings_total=bookings_total, open_polls_count=open_polls_count,
+        overall_avg=overall_avg, feedback_rate=feedback_rate,
     )
 
 
@@ -860,21 +623,121 @@ def download_report():
     if session.get('role') != 'admin':
         return redirect('/login')
 
+    import io, matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import numpy as np
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                    Table, TableStyle, HRFlowable, PageBreak)
+                                    Table, TableStyle, HRFlowable, PageBreak,
+                                    Image as RLImage)
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    import io
 
+    import io, matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, HRFlowable, PageBreak,
+                                    Image as RLImage)
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+    CLR_GREEN='#2e7d32';CLR_LGREEN='#e8f5e9';CLR_ORANGE='#e65100'
+    CLR_BLUE='#1565c0';CLR_RED='#c62828';CLR_GREY='#616161'
+    MEAL_COLORS={'Breakfast':'#FF9800','Lunch':'#4CAF50','Snacks':'#9c27b0','Dinner':'#1976d2'}
+    RATING_COLORS=['#ef5350','#ff9800','#ffc107','#8bc34a','#4CAF50']
+    plt.rcParams.update({'font.family':'DejaVu Sans','axes.spines.top':False,'axes.spines.right':False})
+
+    def _img(fig, w, h):
+        b = io.BytesIO()
+        fig.savefig(b, format='png', dpi=160, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.close(fig); b.seek(0)
+        return RLImage(b, width=w*cm, height=h*cm)
+
+    def _trend(dates, counts, w=16, h=5.5):
+        fig, ax = plt.subplots(figsize=(w*.38, h*.38))
+        xs = range(len(dates))
+        ax.fill_between(xs, counts, alpha=0.12, color=CLR_GREEN)
+        ax.plot(xs, counts, color=CLR_GREEN, lw=2.2, marker='o', ms=6, mfc=CLR_GREEN, mec='white', mew=1.5, zorder=5)
+        ax.set_xticks(list(xs)); ax.set_xticklabels(dates, fontsize=8, rotation=25, ha='right')
+        ax.set_ylabel('Bookings', fontsize=8, color=CLR_GREY)
+        ax.set_title('Daily Booking Trend', fontsize=10, fontweight='bold', color=CLR_GREEN, pad=10)
+        ax.yaxis.grid(True, ls='--', alpha=0.4, zorder=0); ax.set_axisbelow(True)
+        ax.set_facecolor('#fafafa'); fig.patch.set_facecolor('white')
+        for i, v in enumerate(counts):
+            ax.annotate(str(v), (i,v), xytext=(0,7), textcoords='offset points',
+                        ha='center', fontsize=8, color='#333', fontweight='bold')
+        plt.tight_layout(pad=1.2); return _img(fig, w, h)
+
+    def _bar(labels, values, bcolors, title, ylabel='Count', w=8, h=6):
+        fig, ax = plt.subplots(figsize=(w*.38, h*.38))
+        bars = ax.bar(labels, values, color=bcolors, edgecolor='white', lw=0.8, zorder=3, width=0.55)
+        ax.set_title(title, fontsize=9.5, fontweight='bold', color=CLR_GREEN, pad=8)
+        ax.set_ylabel(ylabel, fontsize=8, color=CLR_GREY)
+        ax.tick_params(labelsize=8); ax.set_facecolor('#fafafa'); fig.patch.set_facecolor('white')
+        ax.yaxis.grid(True, ls='--', alpha=0.4, zorder=0); ax.set_axisbelow(True)
+        for b in bars:
+            v = b.get_height()
+            if v > 0:
+                ax.text(b.get_x()+b.get_width()/2, v+0.08,
+                        str(int(v)) if v == int(v) else f'{v:.1f}',
+                        ha='center', va='bottom', fontsize=8, fontweight='bold', color='#333')
+        plt.tight_layout(pad=1.2); return _img(fig, w, h)
+
+    def _hbar(labels, values, bcolors, title, w=16, h=5.5):
+        fig, ax = plt.subplots(figsize=(w*.38, max(h*.38, len(labels)*.55)))
+        ys = range(len(labels))
+        bars = ax.barh(list(ys), values, color=bcolors, edgecolor='white', lw=0.8, height=0.55, zorder=3)
+        ax.set_yticks(list(ys)); ax.set_yticklabels(labels, fontsize=8.5)
+        ax.set_xlim(0, 5.6); ax.axvline(5, color='#ddd', lw=1, ls='--')
+        ax.set_xlabel('Average Rating (out of 5)', fontsize=8, color=CLR_GREY)
+        ax.set_title(title, fontsize=9.5, fontweight='bold', color=CLR_GREEN, pad=8)
+        ax.xaxis.grid(True, ls='--', alpha=0.4, zorder=0); ax.set_axisbelow(True)
+        ax.set_facecolor('#fafafa'); fig.patch.set_facecolor('white')
+        for b, v in zip(bars, values):
+            ax.text(v+0.08, b.get_y()+b.get_height()/2, f'{v:.1f}',
+                    va='center', fontsize=8.5, fontweight='bold', color='#333')
+        plt.tight_layout(pad=1.2); return _img(fig, w, h)
+
+    def _donut(labels, values, clrs, title, w=8, h=6):
+        fig, ax = plt.subplots(figsize=(w*.38, h*.38))
+        wedges, _, autos = ax.pie(values, colors=clrs, autopct='%1.0f%%', startangle=90,
+            wedgeprops=dict(width=0.52, edgecolor='white', lw=2.5), pctdistance=0.72)
+        for a in autos: a.set(fontsize=9, color='white', fontweight='bold')
+        ax.set_title(title, fontsize=9.5, fontweight='bold', color=CLR_GREEN, pad=8)
+        ax.legend(wedges, [f'{l}  ({v})' for l,v in zip(labels,values)],
+            loc='lower center', bbox_to_anchor=(0.5,-0.14), ncol=2, fontsize=8, frameon=False)
+        plt.tight_layout(pad=1.2); return _img(fig, w, h)
+
+    def _sent_stack(names, pos, neg, neu, w=16, h=6):
+        fig, ax = plt.subplots(figsize=(w*.38, max(h*.38, len(names)*.6)))
+        ys = np.arange(len(names))
+        pos_a, neg_a, neu_a = np.array(pos), np.array(neg), np.array(neu)
+        ax.barh(ys, pos_a, color='#66bb6a', label='Positive', zorder=3, height=0.55)
+        ax.barh(ys, neu_a, left=pos_a, color='#bdbdbd', label='Neutral', zorder=3, height=0.55)
+        ax.barh(ys, neg_a, left=pos_a+neu_a, color='#ef5350', label='Negative', zorder=3, height=0.55)
+        ax.set_yticks(ys); ax.set_yticklabels(names, fontsize=8.5)
+        ax.set_xlim(0, 100); ax.set_xlabel('% of Comments', fontsize=8, color=CLR_GREY)
+        ax.set_title('Comment Sentiment per Dish', fontsize=9.5, fontweight='bold', color=CLR_GREEN, pad=8)
+        ax.xaxis.grid(True, ls='--', alpha=0.4, zorder=0); ax.set_axisbelow(True)
+        ax.set_facecolor('#fafafa'); fig.patch.set_facecolor('white')
+        ax.legend(loc='lower right', fontsize=8, frameon=False)
+        plt.tight_layout(pad=1.2); return _img(fig, w, h)
+
+
+    # ── data collection ──
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    now   = datetime.now()
+    now = datetime.now()
     week_ago = now.date() - timedelta(days=7)
 
-    # --- data collection ---
     cursor.execute("""
         SELECT COUNT(*) as total,
                SUM(CASE WHEN food_type='Veg' THEN 1 ELSE 0 END) as veg,
@@ -884,203 +747,212 @@ def download_report():
     """, (week_ago,))
     bk = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT meal, COUNT(*) as cnt FROM bookings
-        WHERE booking_date >= %s GROUP BY meal ORDER BY cnt DESC
-    """, (week_ago,))
+    cursor.execute("SELECT DATE(booking_date) as bdate, COUNT(*) as cnt FROM bookings WHERE booking_date >= %s GROUP BY DATE(booking_date) ORDER BY bdate ASC", (week_ago,))
+    daily = cursor.fetchall() or []
+    cursor.execute("SELECT meal, COUNT(*) as cnt FROM bookings WHERE booking_date >= %s GROUP BY meal ORDER BY cnt DESC", (week_ago,))
     meal_bk = cursor.fetchall() or []
-
+    cursor.execute("SELECT food_type, COUNT(*) as cnt FROM bookings WHERE booking_date >= %s GROUP BY food_type", (week_ago,))
+    food_bk = cursor.fetchall() or []
+    cursor.execute("SELECT rating, COUNT(*) as cnt FROM feedback JOIN bookings b ON feedback.booking_id=b.id WHERE b.booking_date >= %s GROUP BY rating ORDER BY rating", (week_ago,))
+    rdist = cursor.fetchall() or []
     cursor.execute("""
         SELECT d.dish_name, AVG(f.rating) as avg_r, COUNT(f.id) as reviews,
                GROUP_CONCAT(f.comment SEPARATOR '||||') as comments
-        FROM feedback f JOIN dishes d ON f.dish_id=d.id
-        JOIN bookings b ON f.booking_id=b.id
-        WHERE b.booking_date >= %s
-        GROUP BY d.dish_name ORDER BY avg_r DESC
+        FROM feedback f JOIN dishes d ON f.dish_id=d.id JOIN bookings b ON f.booking_id=b.id
+        WHERE b.booking_date >= %s GROUP BY d.dish_name ORDER BY avg_r DESC
     """, (week_ago,))
     dish_rows = cursor.fetchall() or []
-
+    cursor.execute("SELECT b.meal, AVG(f.rating) as avg_r FROM feedback f JOIN bookings b ON f.booking_id=b.id WHERE b.booking_date >= %s GROUP BY b.meal ORDER BY avg_r DESC", (week_ago,))
+    meal_sat = cursor.fetchall() or []
     cursor.execute("""
         SELECT p.question, p.meal, p.poll_date, p.winner_dish,
-               COUNT(DISTINCT pv.user_id) as votes
-        FROM polls p LEFT JOIN poll_votes pv ON p.id=pv.poll_id
-        WHERE p.poll_date >= %s
-        GROUP BY p.id ORDER BY p.poll_date DESC
+               COUNT(DISTINCT pv.user_id) as votes FROM polls p
+        LEFT JOIN poll_votes pv ON p.id=pv.poll_id
+        WHERE p.poll_date >= %s GROUP BY p.id ORDER BY p.poll_date DESC
     """, (week_ago,))
     poll_rows = cursor.fetchall() or []
-
+    cursor.execute("""
+        SELECT ds.dish_name, ds.meal, ds.votes, ds.reason, u.username
+        FROM dish_suggestions ds JOIN users u ON ds.user_id=u.id
+        WHERE ds.status != 'declined' ORDER BY ds.votes DESC, ds.submitted_at DESC LIMIT 10
+    """)
+    top_suggestions = cursor.fetchall() or []
     cursor.execute("SELECT AVG(rating) as avg FROM feedback JOIN bookings b ON feedback.booking_id=b.id WHERE b.booking_date >= %s", (week_ago,))
     avg_row = cursor.fetchone()
     overall_avg = round(float(avg_row['avg']), 2) if avg_row and avg_row['avg'] else 0
+    cursor.close(); conn.close()
 
-    cursor.close()
-    conn.close()
+    # ── sentiment ──
+    POS = {'good','great','excellent','amazing','delicious','tasty','loved','fantastic','wonderful','nice','perfect','enjoyed','fresh','hot','crispy','yummy','best','awesome','superb','satisfied','clean'}
+    NEG = {'bad','poor','terrible','awful','horrible','disgusting','cold','stale','overcooked','oily','bland','worst','hate','unhappy','disappointed','tasteless','burnt','not','never','late','slow','waste'}
+    def qsent(t):
+        if not t: return 'Neutral'
+        wds=t.lower().split(); p=sum(1 for w in wds if w.strip('.,!?') in POS); n=sum(1 for w in wds if w.strip('.,!?') in NEG)
+        return 'Positive' if p>n else ('Negative' if n>p else 'Neutral')
+    dsentiment=[]
+    for d in dish_rows:
+        cmts=[c.strip() for c in (d['comments'] or '').split('||||') if c.strip()]
+        pos=sum(1 for c in cmts if qsent(c)=='Positive'); neg=sum(1 for c in cmts if qsent(c)=='Negative')
+        neu=len(cmts)-pos-neg; tc=len(cmts)
+        label='Mostly Positive' if pos>neg else ('Needs Improvement' if neg>pos else ('Mixed' if tc else 'No comments'))
+        dsentiment.append({'name':d['dish_name'],'label':label,'total':tc,
+            'pos_pct':round(pos/tc*100) if tc else 0,'neg_pct':round(neg/tc*100) if tc else 0,'neu_pct':round(neu/tc*100) if tc else 0,
+            'top_neg':next((c for c in cmts if qsent(c)=='Negative'),None)})
 
-    # --- build PDF in memory ---
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=2*cm, rightMargin=2*cm,
-                            topMargin=2*cm, bottomMargin=2*cm)
+    # ── PDF setup ──
+    buf=io.BytesIO(); PAGE_W=A4[0]-4*cm
+    doc=SimpleDocTemplate(buf,pagesize=A4,leftMargin=2*cm,rightMargin=2*cm,topMargin=2*cm,bottomMargin=2.5*cm)
+    RL_GREEN=colors.HexColor(CLR_GREEN); RL_LGREEN=colors.HexColor(CLR_LGREEN)
+    RL_ORANGE=colors.HexColor(CLR_ORANGE); RL_RED=colors.HexColor(CLR_RED)
+    RL_GREY=colors.HexColor(CLR_GREY); RL_LGREY=colors.HexColor('#f5f5f5')
+    RL_BLUE=colors.HexColor(CLR_BLUE)
 
-    GREEN  = colors.HexColor('#2e7d32')
-    LGREEN = colors.HexColor('#e8f5e9')
-    ORANGE = colors.HexColor('#e65100')
-    RED    = colors.HexColor('#c62828')
-    GREY   = colors.HexColor('#616161')
-    LGREY  = colors.HexColor('#f5f5f5')
-    WHITE  = colors.white
+    def PS(name,**k): return ParagraphStyle(name,**k)
+    sTitle=PS('t',fontSize=28,textColor=RL_GREEN,fontName='Helvetica-Bold',alignment=TA_CENTER,spaceAfter=4)
+    sSub  =PS('s',fontSize=11,textColor=RL_GREY,alignment=TA_CENTER,spaceAfter=2)
+    sH2   =PS('h2',fontSize=10,textColor=RL_GREY,fontName='Helvetica-Bold',spaceBefore=8,spaceAfter=4)
+    sBody =PS('b',fontSize=9,textColor=colors.black,leading=14,spaceAfter=4)
+    sSmall=PS('sm',fontSize=7.5,textColor=RL_GREY,spaceAfter=2,alignment=TA_CENTER)
+    sNote =PS('n',fontSize=8.5,textColor=RL_ORANGE,spaceAfter=4,leading=13)
+    sCent =PS('c',fontSize=9,alignment=TA_CENTER,textColor=RL_GREY)
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('title', fontSize=22, textColor=GREEN,
-                                  fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=4)
-    sub_style   = ParagraphStyle('sub',   fontSize=11, textColor=GREY,
-                                  alignment=TA_CENTER, spaceAfter=2)
-    h1_style    = ParagraphStyle('h1',    fontSize=14, textColor=GREEN,
-                                  fontName='Helvetica-Bold', spaceBefore=14, spaceAfter=6)
-    h2_style    = ParagraphStyle('h2',    fontSize=11, textColor=GREY,
-                                  fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=4)
-    body_style  = ParagraphStyle('body',  fontSize=10, textColor=colors.black,
-                                  leading=15, spaceAfter=4)
-    small_style = ParagraphStyle('small', fontSize=9,  textColor=GREY, spaceAfter=3)
+    def tbl(data,cw,accent=None):
+        t=Table(data,colWidths=cw,repeatRows=1)
+        ts=TableStyle([
+            ('BACKGROUND',(0,0),(-1,0),RL_LGREEN),('TEXTCOLOR',(0,0),(-1,0),RL_GREEN),
+            ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,0),9),
+            ('TOPPADDING',(0,0),(-1,0),9),('BOTTOMPADDING',(0,0),(-1,0),9),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,RL_LGREY]),
+            ('FONTSIZE',(0,1),(-1,-1),8.5),('TOPPADDING',(0,1),(-1,-1),7),('BOTTOMPADDING',(0,1),(-1,-1),7),
+            ('LEFTPADDING',(0,0),(-1,-1),10),('RIGHTPADDING',(0,0),(-1,-1),10),
+            ('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#e0e0e0')),
+            ('LINEBELOW',(0,0),(-1,0),1.5,RL_GREEN),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ])
+        if accent is not None:
+            ts.add('TEXTCOLOR',(accent,1),(accent,-1),RL_GREEN); ts.add('FONTNAME',(accent,1),(accent,-1),'Helvetica-Bold')
+        t.setStyle(ts); return t
 
-    def make_table(data, col_widths, header_bg=LGREEN):
-        t = Table(data, colWidths=col_widths)
-        style = [
-            ('BACKGROUND',  (0,0), (-1,0), header_bg),
-            ('TEXTCOLOR',   (0,0), (-1,0), GREEN),
-            ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE',    (0,0), (-1,0), 10),
-            ('BOTTOMPADDING',(0,0),(-1,0), 8),
-            ('TOPPADDING',  (0,0),(-1,0), 8),
-            ('ROWBACKGROUNDS',(0,1),(-1,-1),[WHITE, LGREY]),
-            ('FONTSIZE',    (0,1),(-1,-1), 9),
-            ('TOPPADDING',  (0,1),(-1,-1), 6),
-            ('BOTTOMPADDING',(0,1),(-1,-1),6),
-            ('GRID',        (0,0),(-1,-1), 0.4, colors.HexColor('#e0e0e0')),
-            ('ROUNDEDCORNERS', [4]),
-        ]
-        t.setStyle(TableStyle(style))
+    def kpi_row(items):
+        n=len(items); cw=PAGE_W/n
+        data=[[Paragraph(f'<font size="20" color="{c}"><b>{v}</b></font><br/><font size="7.5" color="{CLR_GREY}">{l}</font>',sCent) for l,v,c in items]]
+        t=Table(data,colWidths=[cw]*n)
+        t.setStyle(TableStyle([('BOX',(0,0),(-1,-1),0.5,colors.HexColor('#e0e0e0')),
+            ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#e0e0e0')),
+            ('BACKGROUND',(0,0),(-1,-1),RL_LGREY),('TOPPADDING',(0,0),(-1,-1),14),('BOTTOMPADDING',(0,0),(-1,-1),14)]))
         return t
 
-    story = []
+    def section_hdr(label):
+        t=Table([[Paragraph(f'<font color="white"><b>{label}</b></font>',
+            PS('sh',fontSize=11,textColor=colors.white,fontName='Helvetica-Bold'))]],colWidths=[PAGE_W])
+        t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),RL_GREEN),
+            ('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10),('LEFTPADDING',(0,0),(-1,-1),14)]))
+        return t
 
-    # ── Cover ──
-    story.append(Spacer(1, 1.5*cm))
-    story.append(Paragraph('IntelliMess', title_style))
-    story.append(Paragraph('Weekly Operations Report', sub_style))
-    story.append(Paragraph(
-        f"Week of {week_ago.strftime('%d %b %Y')} – {now.strftime('%d %b %Y')}",
-        sub_style))
-    story.append(Paragraph(f"Generated on {now.strftime('%d %b %Y, %I:%M %p')}", small_style))
-    story.append(HRFlowable(width='100%', thickness=1.5, color=GREEN, spaceAfter=16))
+    def side_by_side(a,b,wa=9.2,wb=8.3):
+        t=Table([[a,b]],colWidths=[wa*cm,wb*cm])
+        t.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0)]))
+        return t
 
-    # ── 1. Booking Summary ──
-    story.append(Paragraph('1. Booking Summary', h1_style))
-    total = bk['total'] or 0
-    veg   = bk['veg']   or 0
-    nonveg= bk['nonveg']or 0
-    guests= bk['guests']or 0
+    story=[]; total=bk['total'] or 0; veg=bk['veg'] or 0; nonveg=bk['nonveg'] or 0; guests=bk['guests'] or 0
 
-    summary_data = [
-        ['Metric', 'Value'],
-        ['Total Bookings (this week)', str(total)],
-        ['Vegetarian Bookings',        str(veg)],
-        ['Non-Vegetarian Bookings',    str(nonveg)],
-        ['Guest Meals Included',       str(guests)],
-        ['Overall Avg Satisfaction',   f'{overall_avg} / 5'],
-    ]
-    story.append(make_table(summary_data, [10*cm, 5*cm]))
-    story.append(Spacer(1, 0.4*cm))
+    # COVER
+    story+=[Spacer(1,1.8*cm),Paragraph('IntelliMess',sTitle),Paragraph('Weekly Operations Report',sSub),
+            Spacer(1,0.3*cm),HRFlowable(width='100%',thickness=2.5,color=RL_GREEN,spaceAfter=12),
+            Paragraph(f"Period: <b>{week_ago.strftime('%d %b %Y')}</b> to <b>{now.strftime('%d %b %Y')}</b>",sSub),
+            Paragraph(f"Generated on {now.strftime('%d %b %Y at %I:%M %p')}",sSmall),Spacer(1,0.9*cm)]
+    story.append(kpi_row([('Total Bookings',str(total),CLR_GREEN),('Veg',str(veg),'#388e3c'),
+        ('Non-Veg',str(nonveg),CLR_RED),('Guest Meals',str(guests),CLR_BLUE),('Avg Rating',f'{overall_avg}/5',CLR_ORANGE)]))
+    if daily:
+        dlabels=[r['bdate'].strftime('%a %d %b') if hasattr(r['bdate'],'strftime') else str(r['bdate']) for r in daily]
+        story+=[Spacer(1,0.7*cm),_trend(dlabels,[r['cnt'] for r in daily])]
+    story.append(PageBreak())
 
+    # BOOKINGS
+    story+=[section_hdr('1.  Booking Summary'),Spacer(1,0.5*cm)]
+    if meal_bk and food_bk:
+        ml=[r['meal'] for r in meal_bk]; mv=[r['cnt'] for r in meal_bk]; mc=[MEAL_COLORS.get(m,'#888') for m in ml]
+        fl=[r['food_type'] for r in food_bk]; fv=[r['cnt'] for r in food_bk]; fc=['#4CAF50' if 'Veg' in l else '#ef5350' for l in fl]
+        story.append(side_by_side(_bar(ml,mv,mc,'Bookings by Meal',w=8.5,h=6.2),_donut(fl,fv,fc,'Veg vs Non-Veg',w=7.8,h=6.2)))
     if meal_bk:
-        story.append(Paragraph('Bookings by Meal', h2_style))
-        meal_data = [['Meal', 'Bookings']] + [[r['meal'], str(r['cnt'])] for r in meal_bk]
-        story.append(make_table(meal_data, [10*cm, 5*cm]))
-    story.append(Spacer(1, 0.4*cm))
-
-    # ── 2. Satisfaction & Ratings ──
+        mtbl=[['Meal','Bookings','Share']]
+        for r in meal_bk: mtbl.append([r['meal'],str(r['cnt']),f"{round(r['cnt']/total*100)}%" if total else '-'])
+        story+=[Spacer(1,0.3*cm),Paragraph('Meal Breakdown',sH2),tbl(mtbl,[7*cm,4*cm,3.5*cm])]
     story.append(PageBreak())
-    story.append(Paragraph('2. Dish Ratings & Satisfaction', h1_style))
 
+    # RATINGS
+    story+=[section_hdr('2.  Dish Ratings & Satisfaction'),Spacer(1,0.5*cm)]
     if dish_rows:
-        rating_data = [['Dish', 'Avg Rating', 'Reviews']]
-        for d in dish_rows:
-            avg  = round(float(d['avg_r']), 2) if d['avg_r'] else 0
-            stars = '★' * int(round(avg)) + '☆' * (5 - int(round(avg)))
-            rating_data.append([d['dish_name'], f'{avg}  {stars}', str(d['reviews'])])
-        story.append(make_table(rating_data, [8.5*cm, 4.5*cm, 2.5*cm]))
-
-        if dish_rows:
-            best  = dish_rows[0]
-            worst = dish_rows[-1]
-            story.append(Spacer(1, 0.3*cm))
-            story.append(Paragraph(
-                f"<b>Top Dish:</b> {best['dish_name']} ({round(float(best['avg_r']),2)}/5)",
-                body_style))
-            story.append(Paragraph(
-                f"<b>Needs Attention:</b> {worst['dish_name']} ({round(float(worst['avg_r']),2)}/5)",
-                body_style))
-    else:
-        story.append(Paragraph('No ratings recorded this week.', body_style))
-
-    # ── 3. Sentiment Analysis ──
-    story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph('3. Comment Sentiment Analysis', h1_style))
-
-    POSITIVE_WORDS = {'good','great','excellent','amazing','delicious','tasty','loved',
-        'fantastic','wonderful','nice','perfect','enjoyed','fresh','hot','crispy',
-        'yummy','best','awesome','superb','happy','satisfied','well','better','clean'}
-    NEGATIVE_WORDS = {'bad','poor','terrible','awful','horrible','disgusting','cold',
-        'stale','overcooked','undercooked','oily','bland','worst','hate','unhappy',
-        'disappointed','tasteless','hard','burnt','raw','dirty','spicy','less',
-        'not','never','complaint','issue','problem','delay','late','slow','waste'}
-
-    def quick_sentiment(text):
-        if not text: return 'Neutral'
-        words = text.lower().split()
-        p = sum(1 for w in words if w.strip('.,!?') in POSITIVE_WORDS)
-        n = sum(1 for w in words if w.strip('.,!?') in NEGATIVE_WORDS)
-        return 'Positive' if p > n else ('Negative' if n > p else 'Neutral')
-
+        dn=[d['dish_name'] for d in dish_rows]
+        da=[round(float(d['avg_r']),2) if d['avg_r'] else 0 for d in dish_rows]
+        dc=[CLR_GREEN if v>=4 else (CLR_ORANGE if v>=3 else CLR_RED) for v in da]
+        story.append(_hbar(dn,da,dc,'Dish Ratings',w=16,h=max(5,len(dn)*1.05)))
+    if rdist and meal_sat:
+        rv=[{str(r['rating']):r['cnt'] for r in rdist}.get(str(i),0) for i in range(1,6)]
+        ms_l=[r['meal'] for r in meal_sat]; ms_v=[round(float(r['avg_r']),2) for r in meal_sat]
+        ms_c=[MEAL_COLORS.get(m,'#888') for m in ms_l]
+        story+=[Spacer(1,0.3*cm),side_by_side(_bar(['1*','2*','3*','4*','5*'],rv,RATING_COLORS,'Rating Distribution',ylabel='Responses',w=8.5,h=5.8),_hbar(ms_l,ms_v,ms_c,'Satisfaction by Meal',w=8,h=5.8))]
     if dish_rows:
-        sent_data = [['Dish', 'Sentiment', 'Top Comment']]
+        best=dish_rows[0]; worst=dish_rows[-1]
+        rtbl=[['Dish','Avg Rating','Reviews','Status']]
         for d in dish_rows:
-            cmts = [c.strip() for c in (d['comments'] or '').split('||||') if c.strip()]
-            if not cmts:
-                sent_data.append([d['dish_name'], 'No comments', '—'])
-                continue
-            pos = sum(1 for c in cmts if quick_sentiment(c)=='Positive')
-            neg = sum(1 for c in cmts if quick_sentiment(c)=='Negative')
-            label = 'Mostly Positive' if pos > neg else ('Needs Improvement' if neg > pos else 'Mixed')
-            top   = cmts[0][:60] + ('…' if len(cmts[0])>60 else '')
-            sent_data.append([d['dish_name'], label, top])
-        story.append(make_table(sent_data, [5*cm, 4*cm, 6.5*cm]))
-    else:
-        story.append(Paragraph('No comments recorded this week.', body_style))
-
-    # ── 4. Poll Results ──
+            avg=round(float(d['avg_r']),2) if d['avg_r'] else 0
+            s='Best' if d==best else ('Attention' if d==worst else ('Good' if avg>=3.5 else 'Low'))
+            rtbl.append([d['dish_name'],f"{avg}/5",str(d['reviews']),s])
+        story+=[Spacer(1,0.3*cm),Paragraph('Dish Details',sH2),tbl(rtbl,[7*cm,3*cm,3*cm,3.5*cm],accent=1)]
+        story.append(Paragraph(f"<b>Top:</b> {best['dish_name']} - {round(float(best['avg_r']),2)}/5 from {best['reviews']} review(s).",sNote))
+        if worst!=best: story.append(Paragraph(f"<b>Needs Attention:</b> {worst['dish_name']} - {round(float(worst['avg_r']),2)}/5.",sNote))
     story.append(PageBreak())
-    story.append(Paragraph('4. Poll Results & Winners', h1_style))
 
+    # SENTIMENT
+    story+=[section_hdr('3.  Comment Sentiment Analysis'),Spacer(1,0.5*cm)]
+    has_c=[d for d in dsentiment if d['total']>0]
+    if has_c:
+        story.append(_sent_stack([d['name'] for d in has_c],[d['pos_pct'] for d in has_c],[d['neg_pct'] for d in has_c],[d['neu_pct'] for d in has_c],w=16,h=max(5,len(has_c)*.95)))
+        stbl=[['Dish','Comments','Pos%','Neg%','Verdict','Top Complaint']]
+        for d in has_c:
+            c=(d['top_neg'][:40]+'...') if d['top_neg'] and len(d['top_neg'])>40 else (d['top_neg'] or '-')
+            stbl.append([d['name'],str(d['total']),f"{d['pos_pct']}%",f"{d['neg_pct']}%",d['label'],c])
+        story+=[Spacer(1,0.4*cm),Paragraph('Sentiment Detail',sH2),tbl(stbl,[3.5*cm,2*cm,1.8*cm,1.8*cm,3.2*cm,5.2*cm])]
+    else:
+        story.append(Paragraph('No comments this week.',sBody))
+    story.append(PageBreak())
+
+    # POLLS
+    story+=[section_hdr('4.  Poll Results & Winners'),Spacer(1,0.5*cm)]
     if poll_rows:
-        poll_data = [['Question', 'Meal', 'Date', 'Winner Dish', 'Votes']]
+        pq=[(p['question'][:22]+'...' if len(p['question'])>22 else p['question']) for p in poll_rows]
+        pv=[p['votes'] for p in poll_rows]; pc=[MEAL_COLORS.get(p['meal'],'#888') for p in poll_rows]
+        if any(v>0 for v in pv): story.append(_bar(pq,pv,pc,'Votes per Poll',ylabel='Votes',w=16,h=max(5,len(poll_rows)*1.2)))
+        ptbl=[['Poll Question','Meal','Date','Winner Dish','Votes']]
         for p in poll_rows:
-            winner = p['winner_dish'] or 'Poll open / no votes'
-            date_str = p['poll_date'].strftime('%d %b') if hasattr(p['poll_date'],'strftime') else str(p['poll_date'])
-            q = (p['question'][:40] + '…') if len(p['question'])>40 else p['question']
-            poll_data.append([q, p['meal'], date_str, winner, str(p['votes'])])
-        story.append(make_table(poll_data, [5.5*cm, 2.5*cm, 2*cm, 4*cm, 1.5*cm]))
+            ds=p['poll_date'].strftime('%d %b') if hasattr(p['poll_date'],'strftime') else str(p['poll_date'])
+            q=(p['question'][:35]+'...') if len(p['question'])>35 else p['question']
+            ptbl.append([q,p['meal'],ds,p['winner_dish'] or 'Open',str(p['votes'])])
+        story+=[Spacer(1,0.4*cm),Paragraph('Poll Summary',sH2),tbl(ptbl,[6*cm,2.5*cm,2*cm,4*cm,2*cm])]
     else:
-        story.append(Paragraph('No polls conducted this week.', body_style))
+        story.append(Paragraph('No polls this week.',sBody))
+    story.append(PageBreak())
 
-    # ── Footer note ──
-    story.append(Spacer(1, 1*cm))
-    story.append(HRFlowable(width='100%', thickness=0.8, color=colors.HexColor('#e0e0e0')))
-    story.append(Paragraph('Generated by IntelliMess · Confidential', small_style))
+    # SUGGESTIONS
+    story+=[section_hdr('5.  Student Dish Suggestions'),Spacer(1,0.5*cm)]
+    if top_suggestions:
+        sq=[(s['dish_name'][:18]+'...' if len(s['dish_name'])>18 else s['dish_name']) for s in top_suggestions]
+        sv=[s['votes'] for s in top_suggestions]; sc=[MEAL_COLORS.get(s['meal'],'#888') for s in top_suggestions]
+        if any(v>0 for v in sv): story.append(_bar(sq,sv,sc,'Top Suggested Dishes by Votes',ylabel='Votes',w=16,h=max(5,len(sq)*1.1)))
+        sug_tbl=[['Dish','Meal','Votes','Reason']]
+        for s in top_suggestions:
+            reason=(s['reason'][:40]+'...') if s['reason'] and len(s['reason'])>40 else (s['reason'] or '-')
+            sug_tbl.append([s['dish_name'],s['meal'],str(s['votes']),reason])
+        story+=[Spacer(1,0.4*cm),Paragraph('Top Requests',sH2),tbl(sug_tbl,[5*cm,3*cm,2*cm,7.5*cm])]
+        story.append(Paragraph('Consider adding high-vote suggestions to upcoming menus or creating polls around them.',sNote))
+    else:
+        story.append(Paragraph('No suggestions yet.',sBody))
+
+    story+=[Spacer(1,1*cm),HRFlowable(width='100%',thickness=0.5,color=colors.HexColor('#e0e0e0'),spaceAfter=4),
+            Paragraph(f'IntelliMess Weekly Report - {now.strftime("%d %b %Y")} - Confidential',sSmall)]
 
     doc.build(story)
     buf.seek(0)
-
     filename = f"IntelliMess_Report_{now.strftime('%Y-%m-%d')}.pdf"
     return Response(buf, mimetype='application/pdf',
                     headers={'Content-Disposition': f'attachment; filename={filename}'})
@@ -1194,6 +1066,307 @@ def admin_menu_remove():
     conn.commit()
     cursor.close(); conn.close()
     return redirect('/admin/menu')
+
+
+
+
+# ================================================================
+# --------  DISH SUGGESTIONS  ------------------------------------
+# ================================================================
+
+@app.route('/suggestions')
+def suggestions():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # All pending/noted suggestions sorted by votes desc
+    cursor.execute("""
+        SELECT ds.id, ds.dish_name, ds.meal, ds.reason, ds.votes,
+               ds.status, ds.submitted_at, u.username,
+               (SELECT 1 FROM suggestion_votes sv
+                WHERE sv.suggestion_id=ds.id AND sv.user_id=%s) as user_voted,
+               (ds.user_id = %s) as is_mine
+        FROM dish_suggestions ds
+        JOIN users u ON ds.user_id = u.id
+        WHERE ds.status != 'declined'
+        ORDER BY ds.votes DESC, ds.submitted_at DESC
+    """, (user_id, user_id))
+    suggestions = cursor.fetchall() or []
+
+    # Student's own suggestions (all statuses)
+    cursor.execute("""
+        SELECT id, dish_name, meal, reason, votes, status, submitted_at
+        FROM dish_suggestions WHERE user_id=%s ORDER BY submitted_at DESC
+    """, (user_id,))
+    my_suggestions = cursor.fetchall() or []
+
+    cursor.close(); conn.close()
+    return render_template("suggestions.html",
+        suggestions=suggestions, my_suggestions=my_suggestions,
+        username=session.get('username',''))
+
+
+@app.route('/suggestions/submit', methods=['POST'])
+def submit_suggestion():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id   = session['user_id']
+    dish_name = request.form.get('dish_name','').strip()
+    meal      = request.form.get('meal','')
+    reason    = request.form.get('reason','').strip()
+
+    if not dish_name or meal not in ('Breakfast','Lunch','Snacks','Dinner'):
+        return redirect('/suggestions')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Prevent duplicate suggestions from same student
+    cursor.execute("""
+        SELECT id FROM dish_suggestions
+        WHERE user_id=%s AND LOWER(dish_name)=LOWER(%s) AND meal=%s
+    """, (user_id, dish_name, meal))
+    if not cursor.fetchone():
+        cursor.execute("""
+            INSERT INTO dish_suggestions (user_id, dish_name, meal, reason)
+            VALUES (%s,%s,%s,%s)
+        """, (user_id, dish_name, meal, reason or None))
+        conn.commit()
+    cursor.close(); conn.close()
+    return redirect('/suggestions')
+
+
+@app.route('/suggestions/upvote/<int:suggestion_id>', methods=['POST'])
+def upvote_suggestion(suggestion_id):
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Check not their own suggestion
+    cursor.execute("SELECT user_id FROM dish_suggestions WHERE id=%s", (suggestion_id,))
+    row = cursor.fetchone()
+    if not row or row['user_id'] == user_id:
+        cursor.close(); conn.close()
+        return redirect('/suggestions')
+
+    # Insert vote (ignore if already voted due to UNIQUE constraint)
+    try:
+        c2 = conn.cursor()
+        c2.execute("INSERT IGNORE INTO suggestion_votes (suggestion_id, user_id) VALUES (%s,%s)",
+                   (suggestion_id, user_id))
+        if c2.rowcount:
+            c2.execute("UPDATE dish_suggestions SET votes=votes+1 WHERE id=%s", (suggestion_id,))
+        conn.commit()
+        c2.close()
+    except Exception:
+        pass
+    cursor.close(); conn.close()
+    return redirect('/suggestions')
+
+
+# ── ADMIN views ──
+@app.route('/admin/suggestions')
+def admin_suggestions():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT ds.id, ds.dish_name, ds.meal, ds.reason, ds.votes,
+               ds.status, ds.submitted_at, u.username
+        FROM dish_suggestions ds
+        JOIN users u ON ds.user_id = u.id
+        ORDER BY ds.votes DESC, ds.submitted_at DESC
+    """)
+    suggestions = cursor.fetchall() or []
+    # Group counts
+    pending = sum(1 for s in suggestions if s['status']=='pending')
+    noted   = sum(1 for s in suggestions if s['status']=='noted')
+    cursor.close(); conn.close()
+    return render_template("admin_suggestions.html",
+        suggestions=suggestions, pending=pending, noted=noted)
+
+
+@app.route('/admin/suggestions/status', methods=['POST'])
+def admin_suggestion_status():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    suggestion_id = request.form['suggestion_id']
+    status        = request.form['status']
+    if status not in ('pending','noted','declined'):
+        return redirect('/admin/suggestions')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE dish_suggestions SET status=%s WHERE id=%s", (status, suggestion_id))
+    conn.commit()
+    cursor.close(); conn.close()
+    return redirect('/admin/suggestions')
+
+# ================================================================
+# --------  ADMIN SEPARATE SUB-PAGES  ----------------------------
+# ================================================================
+
+def _get_dish_stats_and_sentiment():
+    """Shared helper — returns dish_stats with sentiment, overall avg."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT d.dish_name, AVG(f.rating) as avg_rating,
+               COUNT(f.id) as total_reviews,
+               GROUP_CONCAT(f.comment SEPARATOR '||||') as all_comments
+        FROM feedback f JOIN dishes d ON f.dish_id = d.id
+        GROUP BY d.dish_name ORDER BY avg_rating DESC
+    """)
+    raw = cursor.fetchall() or []
+    cursor.execute("SELECT AVG(rating) as overall FROM feedback")
+    ov = cursor.fetchone()
+    overall = round(float(ov['overall']), 2) if ov and ov['overall'] else 0
+    cursor.close(); conn.close()
+
+    dish_stats = []
+    for dish in raw:
+        comments = [c.strip() for c in (dish['all_comments'] or '').split('||||') if c.strip()]
+        pos = neg = neu = 0
+        notable_positive = []
+        notable_negative = []
+        for c in comments:
+            sentiment, score = analyze_sentiment(c)
+            if sentiment == 'Positive':
+                pos += 1
+                if len(notable_positive) < 2: notable_positive.append(c)
+            elif sentiment == 'Negative':
+                neg += 1
+                if len(notable_negative) < 2: notable_negative.append(c)
+            else:
+                neu += 1
+        total_c = pos + neg + neu
+        sp = {
+            'positive': round(pos/total_c*100) if total_c else 0,
+            'negative': round(neg/total_c*100) if total_c else 0,
+            'neutral':  round(neu/total_c*100) if total_c else 0,
+        }
+        if total_c == 0: label = 'No comments'
+        elif pos >= neg and pos >= neu: label = 'Mostly Positive'
+        elif neg >= pos and neg >= neu: label = 'Needs Improvement'
+        else: label = 'Mixed'
+        dish_stats.append({
+            'dish_name': dish['dish_name'], 'avg_rating': dish['avg_rating'],
+            'total_reviews': dish['total_reviews'], 'sentiment': label,
+            'sentiment_pct': sp, 'notable_positive': notable_positive,
+            'notable_negative': notable_negative, 'comment_count': total_c,
+        })
+    return dish_stats, overall
+
+
+@app.route('/admin/analytics')
+def admin_analytics():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    cursor.execute("""
+        SELECT DATE(booking_date) as bdate, COUNT(*) as count FROM bookings
+        WHERE booking_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        GROUP BY DATE(booking_date) ORDER BY bdate ASC
+    """)
+    booking_trend = cursor.fetchall() or []
+
+    cursor.execute("SELECT meal, COUNT(*) as count FROM bookings GROUP BY meal")
+    meal_stats = cursor.fetchall() or []
+
+    cursor.execute("SELECT food_type, COUNT(*) as count FROM bookings GROUP BY food_type")
+    food_stats = cursor.fetchall() or []
+
+    cursor.execute("SELECT rating, COUNT(*) as count FROM feedback GROUP BY rating ORDER BY rating ASC")
+    rating_dist = {str(r['rating']): r['count'] for r in cursor.fetchall()}
+
+    cursor.execute("""
+        SELECT b.meal, AVG(f.rating) as avg_rating, COUNT(f.id) as total
+        FROM feedback f JOIN bookings b ON f.booking_id = b.id
+        GROUP BY b.meal ORDER BY avg_rating DESC
+    """)
+    meal_satisfaction = cursor.fetchall() or []
+
+    cursor.execute("SELECT COUNT(*) as total FROM bookings")
+    total_bk = cursor.fetchone()['total'] or 1
+    cursor.execute("SELECT COUNT(DISTINCT booking_id) as fb FROM feedback")
+    fb_bk = cursor.fetchone()['fb'] or 0
+    feedback_rate = round(fb_bk / total_bk * 100, 1)
+
+    cursor.close(); conn.close()
+    dish_stats, overall = _get_dish_stats_and_sentiment()
+
+    return render_template("admin_analytics.html",
+        booking_trend=booking_trend, meal_stats=meal_stats,
+        food_stats=food_stats, rating_dist=rating_dist,
+        meal_satisfaction=meal_satisfaction, feedback_rate=feedback_rate,
+        dish_stats=dish_stats, overall=overall)
+
+
+@app.route('/admin/bookings')
+def admin_bookings():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT b.*, u.username, u.roll_no
+        FROM bookings b JOIN users u ON b.user_id = u.id
+        ORDER BY b.booking_date DESC, b.booking_time DESC
+    """)
+    bookings = cursor.fetchall() or []
+    cursor.close(); conn.close()
+    return render_template("admin_bookings.html", bookings=bookings)
+
+
+@app.route('/admin/sentiment')
+def admin_sentiment():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    dish_stats, overall = _get_dish_stats_and_sentiment()
+    return render_template("admin_sentiment.html", dish_stats=dish_stats, overall=overall)
+
+
+@app.route('/admin/heatmap')
+def admin_heatmap():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT DAYNAME(booking_date) as day_name, meal, COUNT(*) as count
+        FROM bookings GROUP BY DAYNAME(booking_date), meal
+    """)
+    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
+    heatmap = {d: {m: 0 for m in meals_order} for d in days_order}
+    heatmap_max = 1
+    for row in cursor.fetchall():
+        d, m, c = row['day_name'], row['meal'], row['count']
+        if d in heatmap and m in heatmap[d]:
+            heatmap[d][m] = c
+            if c > heatmap_max: heatmap_max = c
+
+    # Comeback suggestions
+    cursor.execute("""
+        SELECT d.dish_name, AVG(f.rating) as avg_rating, MAX(b.booking_date) as last_served
+        FROM feedback f JOIN dishes d ON f.dish_id = d.id JOIN bookings b ON f.booking_id = b.id
+        GROUP BY d.dish_name
+        HAVING avg_rating >= 4.0 AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        ORDER BY avg_rating DESC
+    """)
+    comeback_dishes = cursor.fetchall() or []
+    cursor.close(); conn.close()
+
+    return render_template("admin_heatmap.html",
+        heatmap=heatmap, heatmap_max=heatmap_max,
+        days_order=days_order, meals_order=meals_order,
+        comeback_dishes=comeback_dishes)
 
 
 # ---------------- RUN ----------------

@@ -29,8 +29,6 @@
         .reminder-banner.urgent  a { background: #e91e63; color: #fff; }
 
         /* Action cards — polls card specific color */
-        .action-card.polls { color: white; background: linear-gradient(135deg, #5c6bc0, #3949ab); }
-        .action-card.polls i, .action-card.polls h3, .action-card.polls p { color: white; }
     </style>
 </head>
 <body>
@@ -85,10 +83,15 @@
                 <h3>Give Feedback</h3>
                 <p>Rate your meals and help us improve</p>
             </a>
-            <a href="/polls" class="action-card polls">
-                <i class="fas fa-poll"></i>
+            <a href="/polls" class="action-card">
+                <i class="fas fa-poll" style="color:#1976d2;"></i>
                 <h3>Menu Polls</h3>
                 <p>Vote on upcoming dish options</p>
+            </a>
+            <a href="/suggestions" class="action-card">
+                <i class="fas fa-lightbulb" style="color:#f59e0b;"></i>
+                <h3>Suggest a Dish</h3>
+                <p>Request your favourite meals</p>
             </a>
             <a href="/logout" class="action-card logout">
                 <i class="fas fa-sign-out-alt"></i>

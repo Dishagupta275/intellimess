@@ -3,9 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upcoming Menu – IntelliMess</title>
+  <title>Upcoming Meals – IntelliMess</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .special-dish {
+      display:inline-flex; align-items:center; gap:6px;
+      background:linear-gradient(135deg,#fff8e1,#ffe082);
+      border:1.5px solid #ffc107; color:#e65100;
+      border-radius:20px; padding:5px 14px;
+      font-size:13px; font-weight:600; margin-top:10px;
+    }
+    .special-dish i { color:#ff9800; }
+    .poll-note {
+      font-size:11px; color:#aaa; font-style:italic; margin-top:4px;
+    }
+  </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
@@ -27,22 +40,32 @@
     </div>
 
     <div class="menu-grid">
-      {% set meal_icons = {'Breakfast':'☀️','Lunch':'🍛','Snacks':'🥪','Dinner':'🌙'} %}
+      {% set meal_icons = {'Breakfast':'🌅','Lunch':'☀️','Snacks':'🍵','Dinner':'🌙'} %}
       {% for item in menu_data %}
       <div class="menu-card">
         <div class="menu-card-header">
-          <span class="day">{{ meal_icons.get(item.meal, '🍽️') }} {{ item.day }}</span>
+          <span class="day">{{ meal_icons.get(item.meal,'🍽️') }} {{ item.day }}</span>
           <span class="meal">{{ item.meal }}</span>
         </div>
+
         <ul class="menu-dishes">
           {% if item.dishes %}
             {% for dish in item.dishes %}
             <li><i class="fas fa-circle"></i> {{ dish }}</li>
             {% endfor %}
           {% else %}
-            <li style="color:#bbb; font-style:italic;"><i class="fas fa-info-circle"></i> Menu not set yet</li>
+            <li style="color:#bbb;font-style:italic;"><i class="fas fa-info-circle"></i> Menu not set yet</li>
           {% endif %}
         </ul>
+
+        {% if item.special %}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #f0f0f0;">
+          <div class="special-dish">
+            <i class="fas fa-trophy"></i> Poll Winner: {{ item.special }}
+          </div>
+          <div class="poll-note">🗳 Voted by students · Special addition for {{ item.day }}</div>
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </div>

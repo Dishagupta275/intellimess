@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Heatmap & Comebacks – IntelliMess Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .page-wrap { max-width:900px; margin:28px auto; padding:0 20px 60px; }
+    .page-hdr  { color:#fff; margin-bottom:24px; }
+    .page-hdr h1{ font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-hdr p { font-size:14px; opacity:.85; }
+    .s-card { background:#fff; border-radius:18px; padding:26px 28px; box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:24px; }
+    .s-title{ font-size:16px; font-weight:700; color:#333; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; display:flex; align-items:center; gap:8px; }
+    .s-title i { color:#4CAF50; }
+
+    /* Heatmap */
+    .hm-table { width:100%; border-collapse:separate; border-spacing:5px; font-size:13px; }
+    .hm-table th { text-align:center; padding:8px; color:#666; font-weight:600; }
+    .hm-table td.day-lbl { font-weight:600; color:#555; padding:8px 10px; white-space:nowrap; }
+    .hm-cell { text-align:center; padding:13px 8px; border-radius:10px; font-weight:600; transition:transform .15s; cursor:default; }
+    .hm-cell:hover { transform:scale(1.08); }
+
+    /* Legend */
+    .hm-legend { display:flex; align-items:center; gap:10px; font-size:12px; color:#888; margin-top:14px; flex-wrap:wrap; }
+    .legend-box { width:22px; height:22px; border-radius:6px; display:inline-block; }
+
+    /* Comeback list */
+    .comeback-list { list-style:none; }
+    .comeback-list li { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid #f5f5f5; }
+    .comeback-list li:last-child { border:none; }
+
+    .back-link { color:#fff; text-decoration:none; font-size:14px; font-weight:500; }
+    .back-link:hover { opacity:.8; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="page-hdr">
+      <h1><i class="fas fa-th"></i> Heatmap &amp; Dish Comebacks</h1>
+      <p>See booking patterns across the week and discover popular dishes worth bringing back</p>
+    </div>
+
+    <!-- HEATMAP -->
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-th"></i> Booking Pattern Heatmap</div>
+      <p style="font-size:13px;color:#888;margin-bottom:16px;">Each cell shows total historical bookings for that day + meal combination. Darker = more popular.</p>
+      <div style="overflow-x:auto;">
+        <table class="hm-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;"></th>
+              {% for meal in meals_order %}
+              <th>{% if meal=='Breakfast' %}🌅{% elif meal=='Lunch' %}☀️{% elif meal=='Snacks' %}🍵{% else %}🌙{% endif %}<br>{{ meal }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for day in days_order %}
+            <tr>
+              <td class="day-lbl">{{ day }}</td>
+              {% for meal in meals_order %}
+              {% set count = heatmap[day][meal] %}
+              {% set pct = ((count / heatmap_max) * 100)|int if heatmap_max > 0 else 0 %}
+              {% if pct == 0 %}{% set bg='#f5f5f5' %}{% set fg='#ccc' %}
+              {% elif pct < 25 %}{% set bg='#c8e6c9' %}{% set fg='#2e7d32' %}
+              {% elif pct < 50 %}{% set bg='#81c784' %}{% set fg='#1b5e20' %}
+              {% elif pct < 75 %}{% set bg='#4CAF50' %}{% set fg='#fff' %}
+              {% else %}{% set bg='#2e7d32' %}{% set fg='#fff' %}{% endif %}
+              <td class="hm-cell" style="background:{{ bg }};color:{{ fg }};"
+                  title="{{ day }} {{ meal }}: {{ count }} booking{% if count!=1 %}s{% endif %}">
+                {% if count > 0 %}{{ count }}{% else %}—{% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="hm-legend">
+        <span>Low →</span>
+        <span class="legend-box" style="background:#f5f5f5;border:1px solid #ddd;"></span>
+        <span class="legend-box" style="background:#c8e6c9;"></span>
+        <span class="legend-box" style="background:#81c784;"></span>
+        <span class="legend-box" style="background:#4CAF50;"></span>
+        <span class="legend-box" style="background:#2e7d32;"></span>
+        <span>→ High</span>
+      </div>
+    </div>
+
+    <!-- COMEBACK SUGGESTIONS -->
+    <div class="s-card">
+      <div class="s-title"><i class="fas fa-redo"></i> Dish Comeback Suggestions</div>
+      {% if comeback_dishes %}
+      <p style="font-size:13px;color:#888;margin-bottom:16px;">
+        These dishes have a <strong>4.0+ rating</strong> but haven't been served in the last 14 days. Students loved them — bring them back!
+      </p>
+      <ul class="comeback-list">
+        {% for dish in comeback_dishes %}
+        <li>
+          <span>
+            <strong style="color:#333;">🌟 {{ dish.dish_name }}</strong>
+            <span style="font-size:12px;color:#aaa;margin-left:10px;">Last served: {{ dish.last_served }}</span>
+          </span>
+          <span style="color:#4CAF50;font-weight:700;font-size:15px;">{{ dish.avg_rating|round(1) }} ★</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <div style="margin-top:16px;">
+        <a href="/admin/menu" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#4CAF50,#388E3C);color:#fff;padding:11px 24px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;box-shadow:0 4px 12px rgba(76,175,80,.3);">
+          <i class="fas fa-plus"></i> Add to Menu
+        </a>
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:30px;color:#bbb;">
+        <i class="fas fa-check-circle" style="font-size:36px;color:#4CAF50;display:block;margin-bottom:10px;"></i>
+        <strong style="color:#aaa;">All popular dishes served recently!</strong>
+        <p style="font-size:13px;margin-top:6px;">Check back after 14 days of not serving a highly-rated dish.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+  </div>
+</div>
+</body>
+</html>

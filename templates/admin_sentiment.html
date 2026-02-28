@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sentiment Analysis – IntelliMess Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .page-wrap { max-width:900px; margin:28px auto; padding:0 20px 60px; }
+    .page-hdr  { color:#fff; margin-bottom:24px; }
+    .page-hdr h1{ font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-hdr p { font-size:14px; opacity:.85; }
+    .s-card { background:#fff; border-radius:18px; padding:26px 28px; box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:20px; }
+    .s-title{ font-size:16px; font-weight:700; color:#333; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; display:flex; align-items:center; gap:8px; }
+    .s-title i { color:#4CAF50; }
+
+    .overview-pills { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+    .ov-pill { padding:8px 18px; border-radius:30px; font-size:13px; font-weight:600; }
+    .ov-pos { background:#e8f5e9; color:#2e7d32; }
+    .ov-neg { background:#fce4ec; color:#c62828; }
+    .ov-neu { background:#f5f5f5; color:#666; }
+
+    .dish-row { padding:16px 0; border-bottom:1px solid #f5f5f5; }
+    .dish-row:last-child { border:none; }
+    .dish-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+    .dish-name-lbl { font-weight:700; font-size:15px; color:#333; }
+    .sent-badge { font-size:12px; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .sb-pos{background:#e8f5e9;color:#2e7d32;}.sb-neg{background:#fce4ec;color:#c62828;}.sb-mix{background:#fff3e0;color:#e65100;}.sb-non{background:#f5f5f5;color:#999;}
+    .sent-bar { display:flex; height:8px; border-radius:999px; overflow:hidden; margin:8px 0 4px; }
+    .bp{background:#66bb6a;}.br{background:#ef5350;}.bg{background:#bdbdbd;}
+    .bar-legend { display:flex; gap:14px; font-size:11px; color:#888; }
+    .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+    .cc { display:inline-block; font-size:12px; padding:4px 10px; border-radius:8px; margin:2px 3px; }
+    .cc-pos{background:#e8f5e9;color:#388e3c;}.cc-neg{background:#fce4ec;color:#c62828;}
+    .back-link { color:#fff; text-decoration:none; font-size:14px; font-weight:500; }
+    .back-link:hover { opacity:.8; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="page-hdr">
+      <h1><i class="fas fa-brain"></i> Comment Sentiment Analysis</h1>
+      <p>AI-powered analysis of student feedback comments — sorted by dishes needing most attention first</p>
+    </div>
+
+    {% set commented = dish_stats | selectattr('comment_count','gt',0) | list %}
+    {% if commented %}
+    <div class="overview-pills">
+      <span class="ov-pill ov-pos">😊 Green = Positive comments</span>
+      <span class="ov-pill ov-neg">⚠️ Red = Negative — needs attention</span>
+      <span class="ov-pill ov-neu">😐 Grey = Neutral / no clear opinion</span>
+    </div>
+
+    {% set sorted_dishes = commented | sort(attribute='sentiment_pct.negative', reverse=True) %}
+    {% for dish in sorted_dishes %}
+    <div class="s-card">
+      <div class="dish-top">
+        <span class="dish-name-lbl">{{ dish.dish_name }}</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:12px;color:#aaa;">{{ dish.comment_count }} comment{% if dish.comment_count!=1 %}s{% endif %} · ⭐ {{ dish.avg_rating|round(1) }}</span>
+          {% if dish.sentiment=='Mostly Positive' %}<span class="sent-badge sb-pos">😊 Mostly Positive</span>
+          {% elif dish.sentiment=='Needs Improvement' %}<span class="sent-badge sb-neg">⚠️ Needs Improvement</span>
+          {% elif dish.sentiment=='Mixed' %}<span class="sent-badge sb-mix">🔀 Mixed</span>
+          {% else %}<span class="sent-badge sb-non">💬 No sentiment</span>{% endif %}
+        </div>
+      </div>
+      <div class="sent-bar">
+        <div class="bp" style="width:{{ dish.sentiment_pct.positive }}%"></div>
+        <div class="br" style="width:{{ dish.sentiment_pct.negative }}%"></div>
+        <div class="bg" style="width:{{ dish.sentiment_pct.neutral }}%"></div>
+      </div>
+      <div class="bar-legend">
+        <span><span class="dot" style="background:#66bb6a"></span>{{ dish.sentiment_pct.positive }}% Positive</span>
+        <span><span class="dot" style="background:#ef5350"></span>{{ dish.sentiment_pct.negative }}% Negative</span>
+        <span><span class="dot" style="background:#bdbdbd"></span>{{ dish.sentiment_pct.neutral }}% Neutral</span>
+      </div>
+      {% if dish.notable_positive or dish.notable_negative %}
+      <div style="margin-top:10px;">
+        {% for c in dish.notable_positive %}<span class="cc cc-pos">✓ {{ c }}</span>{% endfor %}
+        {% for c in dish.notable_negative %}<span class="cc cc-neg">⚠ {{ c }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="s-card" style="text-align:center;padding:50px;">
+      <i class="fas fa-comment-slash" style="font-size:48px;color:#ddd;display:block;margin-bottom:14px;"></i>
+      <strong style="color:#aaa;font-size:17px;">No comments yet</strong>
+      <p style="font-size:13px;color:#bbb;margin-top:6px;">Sentiment analysis will appear here once students submit feedback comments.</p>
+    </div>
+    {% endif %}
+
+    <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+  </div>
+</div>
+</body>
+</html>

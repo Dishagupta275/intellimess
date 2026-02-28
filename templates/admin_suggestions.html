@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dish Suggestions – IntelliMess Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    .page-wrap { max-width:1000px; margin:28px auto; padding:0 20px 60px; }
+    .page-hdr  { color:#fff; margin-bottom:24px; }
+    .page-hdr h1{ font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-hdr p { font-size:14px; opacity:.85; }
+
+    .kpi-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; margin-bottom:24px; }
+    .kpi-card  { background:#fff; border-radius:14px; padding:20px 16px; text-align:center; box-shadow:0 2px 12px rgba(0,0,0,.07); }
+    .kpi-card .val { font-size:26px; font-weight:700; }
+    .kpi-card .lbl { font-size:12px; color:#888; margin-top:3px; }
+
+    /* Filter tabs */
+    .filter-tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .ftab { padding:8px 18px; border-radius:20px; font-size:13px; font-weight:600;
+            border:2px solid #e0e0e0; background:#fff; color:#888; cursor:pointer; transition:all .3s; }
+    .ftab.active { background:#4CAF50; border-color:#4CAF50; color:#fff; }
+
+    /* Suggestion rows */
+    .sug-row { background:#fff; border-radius:14px; padding:18px 22px;
+               box-shadow:0 2px 12px rgba(0,0,0,.06); margin-bottom:12px;
+               display:flex; gap:16px; align-items:flex-start; }
+    .votes-box { text-align:center; flex-shrink:0; min-width:54px; }
+    .votes-box .vnum { font-size:24px; font-weight:700; color:#333; line-height:1; }
+    .votes-box .vlbl { font-size:10px; color:#aaa; }
+    .sug-info { flex:1; min-width:0; }
+    .sug-top2 { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    .sug-dish2 { font-size:16px; font-weight:700; color:#333; }
+    .meal-chip { font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; color:#fff; }
+    .mc-B{background:#FF9800;}.mc-L{background:#4CAF50;}.mc-S{background:#9c27b0;}.mc-D{background:#1976d2;}
+    .sug-reason2 { font-size:13px; color:#666; font-style:italic; margin-bottom:6px; }
+    .sug-meta2   { font-size:11px; color:#aaa; }
+    .status-badge { font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; }
+    .sb-pending  { background:#fff3cd; color:#856404; }
+    .sb-noted    { background:#d1fae5; color:#065f46; }
+    .sb-declined { background:#fce4ec; color:#c62828; }
+
+    /* Action buttons */
+    .action-col { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+    .act-btn { padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600;
+               border:none; cursor:pointer; font-family:'Poppins',sans-serif; transition:all .2s; }
+    .act-btn:hover { opacity:.85; transform:translateY(-1px); }
+    .btn-note    { background:#d1fae5; color:#065f46; }
+    .btn-decline { background:#fce4ec; color:#c62828; }
+    .btn-pending { background:#fff3cd; color:#856404; }
+
+    .add-to-menu-btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:7px 14px; background:linear-gradient(135deg,#4CAF50,#388E3C);
+      color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:600;
+      font-family:'Poppins',sans-serif; cursor:pointer; text-decoration:none;
+      transition:all .3s;
+    }
+    .add-to-menu-btn:hover { box-shadow:0 3px 10px rgba(76,175,80,.3); transform:translateY(-1px); }
+
+    .empty-state { text-align:center; padding:50px; color:#bbb; }
+    .empty-state i { font-size:48px; display:block; margin-bottom:12px; }
+    .back-link { color:#fff; text-decoration:none; font-size:14px; font-weight:500; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="page-hdr">
+      <h1><i class="fas fa-lightbulb"></i> Student Dish Suggestions</h1>
+      <p>See what dishes students want — mark as noted to acknowledge, or decline if not suitable</p>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="val" style="color:#f59e0b;">{{ suggestions|length }}</div>
+        <div class="lbl">Total Suggestions</div>
+      </div>
+      <div class="kpi-card">
+        <div class="val" style="color:#856404;">{{ pending }}</div>
+        <div class="lbl">Pending Review</div>
+      </div>
+      <div class="kpi-card">
+        <div class="val" style="color:#065f46;">{{ noted }}</div>
+        <div class="lbl">Noted / Accepted</div>
+      </div>
+      {% if suggestions %}
+      <div class="kpi-card">
+        <div class="val" style="color:#333;">{{ suggestions[0].dish_name[:14] }}{% if suggestions[0].dish_name|length > 14 %}…{% endif %}</div>
+        <div class="lbl">🔥 Most Voted</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- FILTER TABS -->
+    <div class="filter-tabs">
+      <button class="ftab active" onclick="filterSuggestions('all',this)">All</button>
+      <button class="ftab" onclick="filterSuggestions('pending',this)">⏳ Pending</button>
+      <button class="ftab" onclick="filterSuggestions('noted',this)">✓ Noted</button>
+      <button class="ftab" onclick="filterSuggestions('declined',this)">✗ Declined</button>
+    </div>
+
+    <!-- SUGGESTIONS LIST -->
+    {% if suggestions %}
+      {% for s in suggestions %}
+      <div class="sug-row" data-status="{{ s.status }}">
+        <div class="votes-box">
+          <div class="vnum">{{ s.votes }}</div>
+          <div class="vlbl">votes</div>
+          <div style="margin-top:8px;font-size:18px;">
+            {% if s.votes >= 10 %}🔥{% elif s.votes >= 5 %}⭐{% else %}💡{% endif %}
+          </div>
+        </div>
+
+        <div class="sug-info">
+          <div class="sug-top2">
+            <span class="sug-dish2">{{ s.dish_name }}</span>
+            <span class="meal-chip mc-{{ s.meal[0] }}">{{ s.meal }}</span>
+            <span class="status-badge sb-{{ s.status }}">
+              {% if s.status=='noted' %}✓ Noted{% elif s.status=='declined' %}✗ Declined{% else %}⏳ Pending{% endif %}
+            </span>
+          </div>
+          {% if s.reason %}
+          <div class="sug-reason2">"{{ s.reason }}"</div>
+          {% endif %}
+          <div class="sug-meta2">
+            Suggested by <strong>{{ s.username }}</strong> ·
+            {{ s.submitted_at.strftime('%d %b %Y, %I:%M %p') if s.submitted_at else '' }}
+          </div>
+        </div>
+
+        <div class="action-col">
+          <!-- Quick add to menu link -->
+          <a href="/admin/menu" class="add-to-menu-btn" title="Go to menu manager to add this dish">
+            <i class="fas fa-plus"></i> Add to Menu
+          </a>
+          <!-- Status controls -->
+          {% if s.status != 'noted' %}
+          <form method="POST" action="/admin/suggestions/status" style="margin:0;">
+            <input type="hidden" name="suggestion_id" value="{{ s.id }}">
+            <input type="hidden" name="status" value="noted">
+            <button type="submit" class="act-btn btn-note">✓ Mark Noted</button>
+          </form>
+          {% endif %}
+          {% if s.status != 'declined' %}
+          <form method="POST" action="/admin/suggestions/status" style="margin:0;">
+            <input type="hidden" name="suggestion_id" value="{{ s.id }}">
+            <input type="hidden" name="status" value="declined">
+            <button type="submit" class="act-btn btn-decline">✗ Decline</button>
+          </form>
+          {% endif %}
+          {% if s.status != 'pending' %}
+          <form method="POST" action="/admin/suggestions/status" style="margin:0;">
+            <input type="hidden" name="suggestion_id" value="{{ s.id }}">
+            <input type="hidden" name="status" value="pending">
+            <button type="submit" class="act-btn btn-pending">↺ Reset</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-lightbulb" style="color:#f59e0b;"></i>
+      <strong style="color:#aaa;font-size:16px;">No suggestions yet</strong>
+      <p style="font-size:13px;margin-top:6px;">Students haven't submitted any dish suggestions yet.</p>
+    </div>
+    {% endif %}
+
+    <div style="margin-top:24px;">
+      <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+    </div>
+  </div>
+</div>
+<script>
+function filterSuggestions(status, btn) {
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.sug-row').forEach(row => {
+    row.style.display = (status === 'all' || row.dataset.status === status) ? 'flex' : 'none';
+  });
+}
+</script>
+</body>
+</html>
