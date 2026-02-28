@@ -82,36 +82,79 @@ def student_dashboard():
         return redirect('/login')
 
     # ---- Meal reminder banner ----
-    # Each entry: (meal_name, booking_closes_hour, booking_closes_minute)
-    # Booking closes X hours before the meal is served
     now = datetime.now()
+    today = now.date()
+    user_id = session['user_id']
+
+    # Meal closing times (booking window closes before the meal)
     meal_closing = [
-        ("Breakfast", 6,  0),   # booking closes at 06:00
-        ("Lunch",     9,  0),   # booking closes at 09:00
-        ("Snacks",    12, 0),   # booking closes at 12:00
-        ("Dinner",    16, 30),  # booking closes at 16:30
+        ("Breakfast", 6,  0),
+        ("Lunch",     9,  0),
+        ("Snacks",    12, 0),
+        ("Dinner",    16, 30),
     ]
+    # Actual meal serve times (used to know which date it's for)
+    meal_serve_hour = {"Breakfast": 8, "Lunch": 13, "Snacks": 16, "Dinner": 20}
 
     reminder = None
+
+    # Check DB for today's bookings by this student
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True, buffered=True)
+
     for meal, close_h, close_m in meal_closing:
         close_time = now.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
         if now < close_time:
-            # Booking window is still open for this meal — show reminder
+            # This meal's booking window is still open
+            # Check if student already booked this meal today
+            cur.execute("""
+                SELECT id FROM bookings
+                WHERE user_id=%s AND meal=%s AND booking_date=%s
+            """, (user_id, meal, today))
+            already_booked = cur.fetchone() is not None
+
             mins_left = int((close_time - now).total_seconds() / 60)
             if mins_left >= 60:
-                h = mins_left // 60
-                m = mins_left % 60
+                h = mins_left // 60; m = mins_left % 60
                 time_str = f"{h}h {m}m" if m else f"{h}h"
             else:
                 time_str = f"{mins_left} min"
-            reminder = {
-                "meal":     meal,
-                "time_str": time_str,
-                "urgent":   mins_left <= 30,
-            }
-            break  # only show the next upcoming closing, not all of them
 
-    # If all meal windows have closed for today, no reminder
+            reminder = {
+                "meal":           meal,
+                "time_str":       time_str,
+                "urgent":         mins_left <= 30,
+                "closed":         False,
+                "already_booked": already_booked,
+                "meal_date":      "today",
+            }
+            break
+
+    # All today's windows closed — check tomorrow's Breakfast
+    if reminder is None:
+        tomorrow = today + timedelta(days=1)
+        tomorrow_close = now.replace(hour=6, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        mins_left = int((tomorrow_close - now).total_seconds() / 60)
+        h = mins_left // 60; m = mins_left % 60
+        time_str = f"{h}h {m}m" if m else f"{h}h"
+
+        cur.execute("""
+            SELECT id FROM bookings
+            WHERE user_id=%s AND meal='Breakfast' AND booking_date=%s
+        """, (user_id, tomorrow))
+        already_booked = cur.fetchone() is not None
+
+        reminder = {
+            "meal":           "Breakfast",
+            "time_str":       time_str,
+            "urgent":         False,
+            "closed":         True,
+            "already_booked": already_booked,
+            "meal_date":      "tomorrow",
+        }
+
+    cur.close(); conn.close()
+
     return render_template("student.html",
         username=session.get('username', ''),
         reminder=reminder
@@ -209,7 +252,7 @@ def book():
     if meal == "Breakfast":
         closing_time = meal_datetime.replace(hour=6, minute=0)
     elif meal == "Dinner":
-        closing_time = meal_datetime.replace(hour=19, minute=30)
+        closing_time = meal_datetime.replace(hour=16, minute=30)
     else:
         closing_time = meal_datetime - timedelta(hours=4)
 

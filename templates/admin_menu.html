@@ -64,37 +64,64 @@
     </div>
 
     <!-- ADD DISH FORM -->
-    <div class="add-card">
-      <h3><i class="fas fa-plus-circle" style="color:#4CAF50;"></i> Add a Dish to the Menu</h3>
+    {% set pre_dish = request.args.get('dish', '') %}
+    {% set pre_meal = request.args.get('meal', '') %}
+
+    <div class="add-card" {% if pre_dish %}style="border:2px solid #4CAF50;box-shadow:0 0 0 4px rgba(76,175,80,.15);"{% endif %}>
+      <h3>
+        <i class="fas fa-plus-circle" style="color:#4CAF50;"></i> Add a Dish to the Menu
+        {% if pre_dish %}
+        <span style="font-size:13px;font-weight:500;color:#4CAF50;margin-left:10px;">
+          <i class="fas fa-lightbulb"></i> Pre-filled from suggestion: <b>{{ pre_dish }}</b>
+        </span>
+        {% endif %}
+      </h3>
       <form method="POST" action="/admin/menu/add">
         <div class="add-row">
+
           <div class="add-field">
-            <label>Day</label>
+            <label>Day <span style="color:#e53935;">*</span></label>
             <select name="day" required>
-              {% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="add-field">
-            <label>Meal</label>
-            <select name="meal" required>
-              {% for m in meals %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="add-field">
-            <label>Choose Existing Dish</label>
-            <select name="existing_dish_id">
-              <option value="">— select —</option>
-              {% for d in all_dishes %}
-              <option value="{{ d.id }}">{{ d.dish_name }}</option>
+              {% for d in days %}
+              <option value="{{ d }}">{{ d }}</option>
               {% endfor %}
             </select>
           </div>
-          <div class="or-divider">OR</div>
+
           <div class="add-field">
-            <label>Add New Dish Name</label>
-            <input type="text" name="new_dish_name" placeholder="e.g. Aloo Paratha">
+            <label>Meal</label>
+            <select name="meal" required {% if pre_meal %}style="border-color:#4CAF50;background:#f1fff1;"{% endif %}>
+              {% for m in meals %}
+              <option value="{{ m }}" {% if m == pre_meal %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
           </div>
-          <button type="submit" class="add-btn"><i class="fas fa-plus"></i> Add Dish</button>
+
+          <div class="add-field">
+            <label>Choose Existing Dish</label>
+            <select name="existing_dish_id" id="existing_dish_select"
+                    {% if pre_dish %}style="border-color:#4CAF50;background:#f1fff1;"{% endif %}>
+              <option value="">— select —</option>
+              {% for d in all_dishes %}
+              <option value="{{ d.id }}"
+                {% if d.dish_name|lower == pre_dish|lower %}selected{% endif %}>
+                {{ d.dish_name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="or-divider">OR</div>
+
+          <div class="add-field">
+            <label>New Dish Name</label>
+            <input type="text" name="new_dish_name" id="new_dish_input"
+                   placeholder="e.g. Aloo Paratha"
+                   value="{{ pre_dish if pre_dish and not (all_dishes | selectattr('dish_name', 'equalto', pre_dish) | list) else '' }}"
+                   {% if pre_dish %}style="border-color:#4CAF50;background:#f1fff1;"{% endif %}>
+          </div>
+
+          <button type="submit" class="add-btn"><i class="fas fa-plus"></i> Add to Menu</button>
         </div>
       </form>
     </div>
@@ -139,5 +166,29 @@
     </div>
   </div>
 </div>
+<script>
+// If we arrived with a pre-filled dish from suggestions:
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const dish = params.get('dish');
+  const meal = params.get('meal');
+  if (!dish) return;
+
+  // Scroll form into view smoothly
+  const card = document.querySelector('.add-card');
+  if (card) setTimeout(() => card.scrollIntoView({behavior:'smooth', block:'start'}), 200);
+
+  // If the dish was matched in the existing dropdown, clear the text input
+  const sel = document.getElementById('existing_dish_select');
+  const inp = document.getElementById('new_dish_input');
+  if (sel && sel.value) {
+    // Dish found in dropdown — clear new dish input
+    if (inp) inp.value = '';
+  } else {
+    // Not in dropdown — clear the dropdown selection so the text input is used
+    if (sel) sel.value = '';
+  }
+})();
+</script>
 </body>
 </html>

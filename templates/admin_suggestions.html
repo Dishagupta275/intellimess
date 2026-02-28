@@ -143,8 +143,8 @@
         </div>
 
         <div class="action-col">
-          <!-- Quick add to menu link -->
-          <a href="/admin/menu" class="add-to-menu-btn" title="Go to menu manager to add this dish">
+          <!-- Quick add to menu — pre-fills dish name + meal -->
+          <a href="/admin/menu?dish={{ s.dish_name|urlencode }}&meal={{ s.meal }}" class="add-to-menu-btn" title="Add this dish to the menu">
             <i class="fas fa-plus"></i> Add to Menu
           </a>
           <!-- Status controls -->

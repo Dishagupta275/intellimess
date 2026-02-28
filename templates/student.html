@@ -17,6 +17,9 @@
         @keyframes slideDown { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
         .reminder-banner.normal  { background: #fff3cd; border: 1.5px solid #ffc107; color: #856404; }
         .reminder-banner.urgent  { background: #fce4ec; border: 1.5px solid #e91e63; color: #880e4f; }
+        .reminder-banner.booked  { background: #e8f5e9; border: 1.5px solid #4CAF50; color: #1b5e20; }
+        .reminder-banner.booked a { background: #4CAF50; color: #fff; }
+        .reminder-banner.dimmed  { background: #f3f4f6; border: 1.5px solid #d1d5db; color: #6b7280; }
         .reminder-banner i.icon  { font-size: 24px; flex-shrink: 0; }
         .reminder-banner .text strong { font-size: 15px; display: block; margin-bottom: 2px; }
         .reminder-banner .text span  { font-size: 13px; }
@@ -47,18 +50,46 @@
     </nav>
 
     {% if reminder %}
-    <div class="reminder-banner {% if reminder.urgent %}urgent{% else %}normal{% endif %}"
-         style="margin: 20px; max-width:none;">
-        <i class="fas {% if reminder.urgent %}fa-exclamation-circle{% else %}fa-clock{% endif %} icon"></i>
+    {% if reminder.already_booked %}
+      {# Student already booked — show a "you're all set" green banner #}
+      <div class="reminder-banner booked" style="margin: 20px; max-width:none;">
+        <i class="fas fa-check-circle icon"></i>
         <div class="text">
-            <strong>
-                {% if reminder.urgent %}⚠️ Hurry! {% endif %}
-                Booking for {{ reminder.meal }} closes in {{ reminder.time_str }}!
-            </strong>
-            <span>Book now before the window closes.</span>
+          <strong>✅ You're booked for {{ reminder.meal }}{% if reminder.meal_date == 'tomorrow' %} tomorrow{% endif %}!</strong>
+          <span>Remember to show up — your meal is confirmed. Booking window closes in {{ reminder.time_str }}.</span>
+        </div>
+        <a href="/booking">View Booking</a>
+      </div>
+    {% elif reminder.closed %}
+      {# All today's windows closed, no booking yet for tomorrow's breakfast #}
+      <div class="reminder-banner dimmed" style="margin: 20px; max-width:none;">
+        <i class="fas fa-moon icon"></i>
+        <div class="text">
+          <strong>All bookings closed for today 🌙</strong>
+          <span>Next: <b>{{ reminder.meal }}</b> tomorrow — booking window closes at 6:00 AM ({{ reminder.time_str }} from now).</span>
+        </div>
+      </div>
+    {% elif reminder.urgent %}
+      {# Window closing very soon — red urgent #}
+      <div class="reminder-banner urgent" style="margin: 20px; max-width:none;">
+        <i class="fas fa-exclamation-circle icon"></i>
+        <div class="text">
+          <strong>⚠️ Hurry! {{ reminder.meal }} booking closes in {{ reminder.time_str }}!</strong>
+          <span>Only a few minutes left — book right now before it closes!</span>
         </div>
         <a href="/booking">Book Now →</a>
-    </div>
+      </div>
+    {% else %}
+      {# Normal open window #}
+      <div class="reminder-banner normal" style="margin: 20px; max-width:none;">
+        <i class="fas fa-clock icon"></i>
+        <div class="text">
+          <strong>🕐 {{ reminder.meal }} booking closes in {{ reminder.time_str }}</strong>
+          <span>Book your meal before the window closes.</span>
+        </div>
+        <a href="/booking">Book Now →</a>
+      </div>
+    {% endif %}
     {% endif %}
 
     <div class="dashboard-container">
