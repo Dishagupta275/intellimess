@@ -3,9 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Dashboard - IntelliMess</title>
+    <title>Student Dashboard – IntelliMess</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Reminder banner */
+        .reminder-banner {
+            border-radius: 14px; padding: 16px 22px;
+            margin: 20px auto 0; max-width: 900px; padding-left: 20px; padding-right: 20px;
+            display: flex; align-items: center; gap: 14px;
+            animation: slideDown .4s ease;
+        }
+        @keyframes slideDown { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
+        .reminder-banner.normal  { background: #fff3cd; border: 1.5px solid #ffc107; color: #856404; }
+        .reminder-banner.urgent  { background: #fce4ec; border: 1.5px solid #e91e63; color: #880e4f; }
+        .reminder-banner i.icon  { font-size: 24px; flex-shrink: 0; }
+        .reminder-banner .text strong { font-size: 15px; display: block; margin-bottom: 2px; }
+        .reminder-banner .text span  { font-size: 13px; }
+        .reminder-banner a {
+            margin-left: auto; flex-shrink: 0;
+            padding: 8px 18px; border-radius: 20px; font-size: 13px;
+            font-weight: 600; text-decoration: none;
+        }
+        .reminder-banner.normal a { background: #ffc107; color: #333; }
+        .reminder-banner.urgent  a { background: #e91e63; color: #fff; }
+
+        /* Action cards — polls card specific color */
+        .action-card.polls { color: white; background: linear-gradient(135deg, #5c6bc0, #3949ab); }
+        .action-card.polls i, .action-card.polls h3, .action-card.polls p { color: white; }
+    </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
@@ -22,10 +48,25 @@
         </div>
     </nav>
 
+    {% if reminder %}
+    <div class="reminder-banner {% if reminder.urgent %}urgent{% else %}normal{% endif %}"
+         style="margin: 20px; max-width:none;">
+        <i class="fas {% if reminder.urgent %}fa-exclamation-circle{% else %}fa-clock{% endif %} icon"></i>
+        <div class="text">
+            <strong>
+                {% if reminder.urgent %}⚠️ Hurry! {% endif %}
+                Booking for {{ reminder.meal }} closes in {{ reminder.time_str }}!
+            </strong>
+            <span>Book now before the window closes.</span>
+        </div>
+        <a href="/booking">Book Now →</a>
+    </div>
+    {% endif %}
+
     <div class="dashboard-container">
         <div class="welcome-card">
-            <h2>Welcome, {{ username }}!</h2>
-            <p>Manage your mess bookings, view menus, give feedback, and vote in polls.</p>
+            <h2>Welcome, <span class="username">{{ username }}</span>!</h2>
+            <p>Manage your mess bookings, check the menu, give feedback, and vote in polls.</p>
         </div>
 
         <div class="dashboard-links">
@@ -44,7 +85,7 @@
                 <h3>Give Feedback</h3>
                 <p>Rate your meals and help us improve</p>
             </a>
-            <a href="/polls" class="action-card" style="background:linear-gradient(135deg,#5c6bc0,#3949ab);">
+            <a href="/polls" class="action-card polls">
                 <i class="fas fa-poll"></i>
                 <h3>Menu Polls</h3>
                 <p>Vote on upcoming dish options</p>

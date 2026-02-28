@@ -80,7 +80,48 @@ def logout():
 def student_dashboard():
     if 'user_id' not in session or session['role'] != 'student':
         return redirect('/login')
-    return render_template("student.html", username=session.get('username', ''))
+
+    # ---- Meal reminder banner ----
+    now = datetime.now()
+    meal_schedule = [
+        ("Breakfast", 8,  {"Breakfast": (6,0),  "other": None}),
+        ("Lunch",     13, {"Lunch": None,        "other": (9,0)}),
+        ("Snacks",    16, {"Snacks": None,        "other": (12,0)}),
+        ("Dinner",    20, {"Dinner": (16,30),    "other": (16,0)}),
+    ]
+    # Closing times per meal
+    closing = {
+        "Breakfast": now.replace(hour=6, minute=0, second=0, microsecond=0),
+        "Lunch":     now.replace(hour=9, minute=0, second=0, microsecond=0),
+        "Snacks":    now.replace(hour=12, minute=0, second=0, microsecond=0),
+        "Dinner":    now.replace(hour=16, minute=30, second=0, microsecond=0),
+    }
+    meal_hours = {"Breakfast": 8, "Lunch": 13, "Snacks": 16, "Dinner": 20}
+
+    reminder = None
+    for meal, hour, _ in meal_schedule:
+        meal_time  = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        close_time = closing[meal]
+        if now < close_time:
+            mins_left = int((close_time - now).total_seconds() / 60)
+            if mins_left <= 180:  # show reminder if closing within 3 hours
+                if mins_left >= 60:
+                    time_str = f"{mins_left // 60}h {mins_left % 60}m"
+                else:
+                    time_str = f"{mins_left} minutes"
+                reminder = {
+                    "meal": meal,
+                    "time_str": time_str,
+                    "urgent": mins_left <= 30,
+                }
+            break
+        elif now < meal_time:
+            break  # meal not yet closeable, no reminder needed
+
+    return render_template("student.html",
+        username=session.get('username', ''),
+        reminder=reminder
+    )
 
 # ---------------- MENU ----------------
 @app.route('/menu')
@@ -1045,7 +1086,118 @@ def download_report():
                     headers={'Content-Disposition': f'attachment; filename={filename}'})
 
 
+
+# ================================================================
+# ----------------  ADMIN MENU MANAGEMENT  -----------------------
+# ================================================================
+
+@app.route('/admin/menu')
+def admin_menu():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    days  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    meals = ['Breakfast','Lunch','Snacks','Dinner']
+
+    # Build full weekly menu grid
+    menu_grid = {d: {m: [] for m in meals} for d in days}
+    cursor.execute("""
+        SELECT wm.id as menu_id, wm.day_of_week, wm.meal,
+               d.id as dish_id, d.dish_name
+        FROM weekly_menu wm
+        LEFT JOIN menu_items mi ON wm.id = mi.weekly_menu_id
+        LEFT JOIN dishes d ON mi.dish_id = d.id
+        ORDER BY wm.day_of_week, wm.meal
+    """)
+    for row in cursor.fetchall():
+        day, meal = row['day_of_week'], row['meal']
+        if day in menu_grid and meal in menu_grid[day]:
+            if row['dish_name']:
+                menu_grid[day][meal].append({
+                    'dish_id':   row['dish_id'],
+                    'dish_name': row['dish_name'],
+                    'menu_id':   row['menu_id'],
+                })
+
+    # All dishes for dropdown
+    cursor.execute("SELECT id, dish_name FROM dishes ORDER BY dish_name")
+    all_dishes = cursor.fetchall() or []
+
+    cursor.close()
+    conn.close()
+    return render_template("admin_menu.html",
+        menu_grid=menu_grid, days=days, meals=meals, all_dishes=all_dishes)
+
+
+@app.route('/admin/menu/add', methods=['POST'])
+def admin_menu_add():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    day       = request.form['day']
+    meal      = request.form['meal']
+    dish_name = request.form.get('new_dish_name', '').strip()
+    dish_id   = request.form.get('existing_dish_id', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Use existing dish or create new one
+    if dish_id:
+        did = int(dish_id)
+    elif dish_name:
+        cursor2 = conn.cursor()
+        cursor.execute("SELECT id FROM dishes WHERE dish_name=%s", (dish_name,))
+        ex = cursor.fetchone()
+        if ex:
+            did = ex['id']
+        else:
+            cursor2.execute("INSERT INTO dishes (dish_name) VALUES (%s)", (dish_name,))
+            conn.commit()
+            did = cursor2.lastrowid
+        cursor2.close()
+    else:
+        cursor.close(); conn.close()
+        return redirect('/admin/menu')
+
+    # Get or create weekly_menu row
+    cursor.execute("SELECT id FROM weekly_menu WHERE day_of_week=%s AND meal=%s", (day, meal))
+    wm = cursor.fetchone()
+    cursor3 = conn.cursor()
+    if wm:
+        menu_id = wm['id']
+    else:
+        cursor3.execute("INSERT INTO weekly_menu (day_of_week, meal) VALUES (%s,%s)", (day, meal))
+        conn.commit()
+        menu_id = cursor3.lastrowid
+
+    # Add dish if not already in that slot
+    cursor.execute("SELECT 1 FROM menu_items WHERE weekly_menu_id=%s AND dish_id=%s", (menu_id, did))
+    if not cursor.fetchone():
+        cursor3.execute("INSERT INTO menu_items (weekly_menu_id, dish_id) VALUES (%s,%s)", (menu_id, did))
+        conn.commit()
+
+    cursor3.close(); cursor.close(); conn.close()
+    return redirect('/admin/menu')
+
+
+@app.route('/admin/menu/remove', methods=['POST'])
+def admin_menu_remove():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    menu_id = request.form['menu_id']
+    dish_id = request.form['dish_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM menu_items WHERE weekly_menu_id=%s AND dish_id=%s", (menu_id, dish_id))
+    conn.commit()
+    cursor.close(); conn.close()
+    return redirect('/admin/menu')
+
+
 # ---------------- RUN ----------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+

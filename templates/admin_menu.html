@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Weekly Menu – IntelliMess</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .menu-mgr-wrap { max-width:1100px; margin:28px auto; padding:0 20px 60px; }
+
+    .page-header { color:#fff; margin-bottom:24px; }
+    .page-header h1 { font-size:28px; font-weight:700; margin-bottom:4px; }
+    .page-header p  { font-size:14px; opacity:.85; }
+
+    /* Add dish card */
+    .add-card { background:#fff; border-radius:18px; padding:26px 28px; box-shadow:0 4px 16px rgba(0,0,0,.08); margin-bottom:28px; }
+    .add-card h3 { font-size:16px; font-weight:700; color:#333; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #f0f0f0; }
+    .add-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+    .add-field { display:flex; flex-direction:column; gap:6px; flex:1; min-width:160px; }
+    .add-field label { font-size:13px; font-weight:600; color:#555; }
+    .add-field select, .add-field input {
+      padding:11px 14px; border:2px solid #e0e0e0; border-radius:10px;
+      font-size:14px; font-family:'Poppins',sans-serif; background:#f9f9f9; color:#333;
+      transition:all .3s;
+    }
+    .add-field select:focus, .add-field input:focus {
+      outline:none; border-color:#4CAF50; background:#fff;
+      box-shadow:0 0 0 4px rgba(76,175,80,.1);
+    }
+    .add-btn { padding:11px 24px; background:linear-gradient(135deg,#4CAF50,#388E3C); color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; font-family:'Poppins',sans-serif; cursor:pointer; transition:all .3s; white-space:nowrap; }
+    .add-btn:hover { transform:translateY(-2px); box-shadow:0 4px 15px rgba(76,175,80,.3); }
+    .or-divider { text-align:center; color:#aaa; font-size:13px; font-weight:600; padding-top:22px; flex-shrink:0; align-self:center; }
+
+    /* Menu grid */
+    .menu-grid-wrap { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:20px; }
+    .day-card { background:#fff; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,.07); overflow:hidden; }
+    .day-header { padding:14px 18px; font-size:15px; font-weight:700; color:#fff;
+                  background:linear-gradient(135deg,#4CAF50,#81C784); }
+    .meal-block { padding:12px 16px; border-bottom:1px solid #f5f5f5; }
+    .meal-block:last-child { border:none; }
+    .meal-label { font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:5px; }
+    .dish-tag { display:inline-flex; align-items:center; gap:6px; background:#f0faf0; color:#2e7d32; border:1px solid #c8e6c9; border-radius:20px; padding:4px 12px; font-size:13px; font-weight:500; margin:3px 4px 3px 0; }
+    .remove-btn { background:none; border:none; color:#ef5350; cursor:pointer; font-size:13px; padding:0; line-height:1; }
+    .remove-btn:hover { color:#c62828; }
+    .empty-meal { font-size:12px; color:#ccc; font-style:italic; padding:2px 0; }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-chart-bar"></i> Dashboard</a>
+      <a href="/admin/polls"><i class="fas fa-poll"></i> Polls</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="menu-mgr-wrap">
+    <div class="page-header">
+      <h1><i class="fas fa-calendar-week"></i> Manage Weekly Menu</h1>
+      <p>Add or remove dishes from any day and meal — changes reflect immediately in the student menu.</p>
+    </div>
+
+    <!-- ADD DISH FORM -->
+    <div class="add-card">
+      <h3><i class="fas fa-plus-circle" style="color:#4CAF50;"></i> Add a Dish to the Menu</h3>
+      <form method="POST" action="/admin/menu/add">
+        <div class="add-row">
+          <div class="add-field">
+            <label>Day</label>
+            <select name="day" required>
+              {% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="add-field">
+            <label>Meal</label>
+            <select name="meal" required>
+              {% for m in meals %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="add-field">
+            <label>Choose Existing Dish</label>
+            <select name="existing_dish_id">
+              <option value="">— select —</option>
+              {% for d in all_dishes %}
+              <option value="{{ d.id }}">{{ d.dish_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="or-divider">OR</div>
+          <div class="add-field">
+            <label>Add New Dish Name</label>
+            <input type="text" name="new_dish_name" placeholder="e.g. Aloo Paratha">
+          </div>
+          <button type="submit" class="add-btn"><i class="fas fa-plus"></i> Add Dish</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- MENU GRID -->
+    <div class="menu-grid-wrap">
+      {% for day in days %}
+      <div class="day-card">
+        <div class="day-header">{{ day }}</div>
+        {% for meal in meals %}
+        <div class="meal-block">
+          <div class="meal-label">
+            {% if meal=='Breakfast' %}🌅{% elif meal=='Lunch' %}☀️{% elif meal=='Snacks' %}🍵{% else %}🌙{% endif %}
+            {{ meal }}
+          </div>
+          {% if menu_grid[day][meal] %}
+            {% for item in menu_grid[day][meal] %}
+            <span class="dish-tag">
+              {{ item.dish_name }}
+              <form method="POST" action="/admin/menu/remove" style="display:inline;margin:0;">
+                <input type="hidden" name="menu_id" value="{{ item.menu_id }}">
+                <input type="hidden" name="dish_id" value="{{ item.dish_id }}">
+                <button type="submit" class="remove-btn" title="Remove" onclick="return confirm('Remove {{ item.dish_name }}?')">
+                  <i class="fas fa-times"></i>
+                </button>
+              </form>
+            </span>
+            {% endfor %}
+          {% else %}
+            <div class="empty-meal">No dishes yet</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="text-align:center;margin-top:30px;">
+      <a href="/admin" style="color:#fff;text-decoration:none;font-size:14px;font-weight:500;">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+      </a>
+    </div>
+  </div>
+</div>
+</body>
+</html>
