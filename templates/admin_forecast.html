@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Demand Forecast – IntelliMess Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    .fc-wrap { max-width:1080px; margin:28px auto; padding:0 20px 80px; }
+    .fc-hdr { margin-bottom:24px; }
+    .fc-hdr h1 { font-size:26px; font-weight:800; color:#fff; margin-bottom:4px; }
+    .fc-hdr p  { font-size:14px; color:rgba(255,255,255,.75); }
+
+    .kpi-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+    .kpi { background:#fff; border-radius:16px; padding:20px 18px; box-shadow:0 2px 14px rgba(0,0,0,.07); }
+    .kpi .val { font-size:28px; font-weight:800; line-height:1; }
+    .kpi .lbl { font-size:12px; color:#888; margin-top:4px; }
+
+    /* ── ML model card ── */
+    .model-card {
+      background:linear-gradient(135deg,#0d1b2a,#1b263b,#243b55);
+      border-radius:18px; padding:24px 28px; margin-bottom:24px;
+      color:#fff; display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px;
+    }
+    .model-card.fallback { background:linear-gradient(135deg,#37474f,#455a64); }
+    .mc-section h4 { font-size:11px; text-transform:uppercase; letter-spacing:1px;
+                     color:rgba(255,255,255,.45); margin-bottom:12px; }
+    .model-tag { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.1);
+                 border-radius:20px; padding:5px 14px; font-size:12px; font-weight:600; margin-bottom:14px; }
+    .mc-metric { display:flex; align-items:baseline; gap:6px; margin-bottom:10px; }
+    .mc-metric .mv { font-size:34px; font-weight:800;
+                     background:linear-gradient(135deg,#64b5f6,#42a5f5);
+                     -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .mc-metric.good .mv { background:linear-gradient(135deg,#69f0ae,#00e676);
+                          -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .mc-metric .ml { font-size:12px; color:rgba(255,255,255,.55); line-height:1.4; }
+    .imp-bar-wrap { margin-bottom:7px; }
+    .imp-label { font-size:11px; color:rgba(255,255,255,.65);
+                 display:flex; justify-content:space-between; margin-bottom:3px; }
+    .imp-track { height:6px; background:rgba(255,255,255,.1); border-radius:10px; }
+    .imp-fill  { height:100%; border-radius:10px;
+                 background:linear-gradient(90deg,#42a5f5,#1976d2); }
+
+    /* ── Chart ── */
+    .chart-card { background:#fff; border-radius:18px; padding:24px 26px;
+                  box-shadow:0 2px 14px rgba(0,0,0,.07); margin-bottom:24px; }
+    .chart-card h3 { font-size:15px; font-weight:700; color:#333; margin-bottom:16px; }
+
+    /* ── Insight cards ── */
+    .insights { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+    .insight-card { background:#fff; border-radius:16px; padding:20px 22px;
+                    box-shadow:0 2px 14px rgba(0,0,0,.07); display:flex; gap:14px; }
+    .insight-icon { font-size:30px; flex-shrink:0; }
+    .insight-card h4 { font-size:12px; color:#888; font-weight:600; margin-bottom:4px; }
+    .insight-card .big { font-size:17px; font-weight:700; color:#333; }
+    .insight-card .sub { font-size:12px; color:#aaa; margin-top:2px; }
+
+    /* ── Day blocks ── */
+    .day-block { background:#fff; border-radius:18px; margin-bottom:14px;
+                 box-shadow:0 2px 14px rgba(0,0,0,.07); overflow:hidden; }
+    .day-block.tomorrow { border:2px solid #1976d2; }
+    .day-hdr { background:#f8f9fa; padding:14px 22px; display:flex; cursor:pointer;
+               align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;
+               border-bottom:1px solid #f0f0f0; user-select:none; }
+    .day-hdr:hover { background:#f0f4ff; }
+    .day-hdr .dlabel { font-size:16px; font-weight:700; color:#333; }
+    .tomorrow-badge { background:#1976d2; color:#fff; font-size:11px;
+                      font-weight:700; padding:3px 12px; border-radius:20px; }
+    .day-body { display:none; padding:4px 22px 18px; }
+    .day-body.open { display:block; }
+
+    /* ── Meal table ── */
+    .meal-row { display:grid;
+                grid-template-columns:110px 1fr 72px 72px 90px 80px 90px 80px;
+                gap:8px; align-items:center; padding:11px 0;
+                border-bottom:1px solid #f5f5f5; }
+    .meal-row:last-child { border-bottom:none; }
+    .meal-row.hdr { font-size:10px; font-weight:700; color:#aaa;
+                    text-transform:uppercase; padding-bottom:8px; }
+    .meal-chip { font-size:11px; font-weight:700; padding:4px 10px;
+                 border-radius:20px; color:#fff; width:fit-content; }
+    .mc-Breakfast{background:#FF9800;} .mc-Lunch{background:#4CAF50;}
+    .mc-Snacks{background:#9c27b0;}    .mc-Dinner{background:#1976d2;}
+
+    /* CI bar */
+    .ci-bar-wrap { position:relative; height:18px; background:#f0f0f0; border-radius:10px; }
+    .ci-band   { position:absolute; height:100%; background:#bbdefb; border-radius:10px; top:0; }
+    .ci-center { position:absolute; width:6px; height:100%; background:#1976d2;
+                 border-radius:10px; top:0; }
+
+    .conf-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; }
+    .conf-high  { background:#e8f5e9; color:#2e7d32; }
+    .conf-medium{ background:#fff3e0; color:#e65100; }
+    .conf-low   { background:#fce4ec; color:#c62828; }
+    .trend-up   { color:#4CAF50; font-weight:700; }
+    .trend-down { color:#e53935; font-weight:700; }
+    .trend-flat { color:#aaa; }
+
+    .legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px;
+              font-size:12px; color:#666; align-items:center; }
+    .ls { width:14px; height:14px; border-radius:4px; display:inline-block; flex-shrink:0; }
+
+    @media(max-width:720px){
+      .model-card { grid-template-columns:1fr; }
+      .meal-row   { grid-template-columns:90px 1fr 80px 90px; }
+      .meal-row .hs { display:none; }
+      .insights   { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/admin/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+      <a href="/admin/bookings"><i class="fas fa-list"></i> Bookings</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="fc-wrap">
+    <div class="fc-hdr">
+      <h1><i class="fas fa-brain"></i> ML Demand Forecast</h1>
+      <p>Gradient Boosting model trained on your booking history — predicts headcount with confidence intervals</p>
+    </div>
+
+    <!-- ML MODEL CARD -->
+    {% if not fallback_mode %}
+    <div class="model-card">
+      <div class="mc-section">
+        <div class="model-tag"><i class="fas fa-robot"></i> Gradient Boosting Regressor</div>
+        <h4>Model Accuracy</h4>
+        <div class="mc-metric {% if model_info.mae < 5 %}good{% endif %}">
+          <span class="mv">±{{ model_info.mae }}</span>
+          <span class="ml">meals avg error<br><small style="opacity:.6">(cross-validated MAE)</small></span>
+        </div>
+        <div class="mc-metric">
+          <span class="mv" style="font-size:24px;">{{ (model_info.r2 * 100)|round|int }}%</span>
+          <span class="ml">R² — variance<br>explained by model</span>
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:6px;">
+          Trained on {{ model_info.n_samples }} records · retrained on every load
+        </div>
+      </div>
+
+      <div class="mc-section">
+        <h4>What drives the prediction</h4>
+        {% for name, pct in model_info.importances %}
+        <div class="imp-bar-wrap">
+          <div class="imp-label"><span>{{ name }}</span><span>{{ pct }}%</span></div>
+          <div class="imp-track"><div class="imp-fill" style="width:{{ pct }}%;"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="mc-section">
+        <h4>How it works</h4>
+        <div style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.8;">
+          <div>📐 <b>8 features</b> per prediction</div>
+          <div>🌲 <b>200 trees</b> averaged (boosting)</div>
+          <div>📏 CI = ±MAE × distance factor</div>
+          <div>🔗 Blended with firm bookings</div>
+          <div>🎯 Prep = CI-high + 10% buffer</div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="model-card fallback">
+      <div class="mc-section" style="grid-column:1/-1">
+        <div class="model-tag">⚠️ Fallback Mode — not enough training data yet</div>
+        <p style="font-size:13px;color:rgba(255,255,255,.65);margin:0;line-height:1.6;">
+          The ML model needs at least 8 historical booking records to train.
+          As students book meals the model activates automatically.
+          Currently showing day-of-week averages as a placeholder.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- KPIs -->
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="val" style="color:#1976d2;">{{ week_total_predicted }}</div>
+        <div class="lbl">📊 Predicted meals (7 days)</div>
+      </div>
+      <div class="kpi">
+        <div class="val" style="color:#4CAF50;">{{ busiest_day.total_predicted }}</div>
+        <div class="lbl">📅 Busiest: {{ busiest_day.label }}</div>
+      </div>
+      <div class="kpi">
+        <div class="val" style="color:#f59e0b;">{{ busiest_meal.predicted }}</div>
+        <div class="lbl">🍽️ Peak: {{ busiest_meal.meal }}</div>
+      </div>
+      <div class="kpi">
+        <div class="val" style="color:#e53935;">{{ forecast[0].meals | sum(attribute='predicted') }}</div>
+        <div class="lbl">⏰ Tomorrow total</div>
+      </div>
+      {% if not fallback_mode %}
+      <div class="kpi">
+        <div class="val" style="color:#9c27b0;">±{{ model_info.mae }}</div>
+        <div class="lbl">🎯 Avg prediction error</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Insights -->
+    <div class="insights">
+      <div class="insight-card">
+        <div class="insight-icon">🔥</div>
+        <div>
+          <h4>Busiest Day Next Week</h4>
+          <div class="big">{{ busiest_day.label }}</div>
+          <div class="sub">~{{ busiest_day.total_predicted }} predicted &nbsp;·&nbsp; range {{ busiest_day.total_ci_low }}–{{ busiest_day.total_ci_high }}</div>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">🍳</div>
+        <div>
+          <h4>Highest Single Meal Demand</h4>
+          <div class="big">{{ busiest_meal.meal }} — {{ busiest_meal.predicted }} people</div>
+          <div class="sub">Prep {{ busiest_meal.suggested_prep }} portions (CI-high + 10% buffer)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <h3><i class="fas fa-chart-line" style="color:#1976d2;"></i>
+        Historical Bookings (last 4 weeks) + ML 7-day Forecast
+      </h3>
+      <canvas id="forecastChart" height="85"></canvas>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <span><span class="ls" style="background:#4CAF50;"></span> Actual</span>
+      <span><span class="ls" style="background:#1976d2;"></span> ML prediction</span>
+      <span><span class="ls" style="background:#bbdefb;"></span> Confidence interval</span>
+      <span style="margin-left:auto;">
+        <span class="conf-badge conf-high">High</span> ≤3 days &nbsp;
+        <span class="conf-badge conf-medium">Medium</span> 4–5 days &nbsp;
+        <span class="conf-badge conf-low">Low</span> 6–7 days
+      </span>
+    </div>
+
+    <!-- Per-day blocks -->
+    {% set max_pred = forecast | map(attribute='total_predicted') | max %}
+    {% for day in forecast %}
+    <div class="day-block {% if day.is_tomorrow %}tomorrow{% endif %}">
+      <div class="day-hdr" onclick="toggleDay(this)">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="dlabel">{{ day.label }}</span>
+          {% if day.is_tomorrow %}<span class="tomorrow-badge">Tomorrow</span>{% endif %}
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:15px;font-weight:800;color:#1976d2;">{{ day.total_predicted }}</span>
+          <span style="font-size:12px;color:#aaa;">{{ day.total_ci_low }}–{{ day.total_ci_high }}</span>
+          <div style="width:80px;height:8px;background:#f0f0f0;border-radius:10px;overflow:hidden;">
+            <div style="height:100%;background:#1976d2;border-radius:10px;
+                        width:{{ (day.total_predicted/(max_pred+1)*100)|round }}%;"></div>
+          </div>
+          <i class="fas fa-chevron-down" style="color:#ccc;font-size:12px;transition:transform .3s;"></i>
+        </div>
+      </div>
+
+      <div class="day-body {% if day.is_tomorrow %}open{% endif %}">
+        <div class="meal-row hdr">
+          <span>Meal</span><span>Confidence range</span>
+          <span class="hs">Booked</span><span class="hs">Last wk</span>
+          <span>Predicted</span><span>Conf.</span>
+          <span>Prep +10%</span><span class="hs">Trend</span>
+        </div>
+
+        {% set day_max = (day.meals | map(attribute='ci_high') | max) + 1 %}
+        {% for m in day.meals %}
+        <div class="meal-row">
+          <span class="meal-chip mc-{{ m.meal }}">{{ m.meal }}</span>
+
+          <div>
+            {% set bl = (m.ci_low  / day_max * 100)|round %}
+            {% set br = (m.ci_high / day_max * 100)|round %}
+            {% set bp = (m.predicted / day_max * 100)|round %}
+            <div class="ci-bar-wrap">
+              <div class="ci-band"   style="left:{{ bl }}%;width:{{ [br-bl,3]|max }}%;"></div>
+              <div class="ci-center" style="left:{{ [bp-1,0]|max }}%;"></div>
+            </div>
+            <div style="font-size:10px;color:#aaa;margin-top:2px;">{{ m.ci_low }}–{{ m.ci_high }}</div>
+          </div>
+
+          <span class="hs" style="font-weight:600;color:#555;">{{ m.booked }}</span>
+          <span class="hs" style="color:#aaa;">{{ m.last_week or '—' }}</span>
+          <span style="font-size:22px;font-weight:800;color:#1976d2;">{{ m.predicted }}</span>
+          <span class="conf-badge conf-{{ m.confidence }}">{{ m.confidence|title }}</span>
+          <span style="font-size:16px;font-weight:700;color:#2e7d32;">{{ m.suggested_prep }}</span>
+          <span class="hs trend-{{ m.trend }}">
+            {% if m.trend=='up'   %}↑ +{{ m.predicted - m.last_week }}
+            {% elif m.trend=='down' %}↓ {{ m.predicted - m.last_week }}
+            {% else %}→{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+
+        <div style="margin-top:12px;padding:10px 0 4px;border-top:2px solid #f5f5f5;
+                    display:flex;justify-content:space-between;font-size:13px;color:#555;flex-wrap:wrap;gap:8px;">
+          <span><b>Predicted:</b> {{ day.total_predicted }}
+            <span style="color:#aaa;">({{ day.total_ci_low }}–{{ day.total_ci_high }})</span></span>
+          <span><b>Total prep:</b> {{ day.meals | sum(attribute='suggested_prep') }} portions</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div style="margin-top:24px;">
+      <a href="/admin" style="color:#fff;text-decoration:none;font-size:14px;font-weight:500;">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleDay(hdr) {
+  const body = hdr.nextElementSibling;
+  const icon = hdr.querySelector('.fa-chevron-down');
+  body.classList.toggle('open');
+  icon.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+}
+
+// Chart data from Jinja
+const histDates  = {{ historical_daily | map(attribute='booking_date') | map('string') | list | tojson }};
+const histCounts = {{ historical_daily | map(attribute='headcount') | list | tojson }};
+const fcLabels   = {{ forecast | map(attribute='label')           | list | tojson }};
+const fcPred     = {{ forecast | map(attribute='total_predicted') | list | tojson }};
+const fcLow      = {{ forecast | map(attribute='total_ci_low')    | list | tojson }};
+const fcHigh     = {{ forecast | map(attribute='total_ci_high')   | list | tojson }};
+
+const n = histDates.length;
+const allLabels  = [...histDates.map(d => d.slice(5)), ...fcLabels];
+const actualData = [...histCounts.map(Number), ...Array(fcLabels.length).fill(null)];
+const predData   = [...Array(n).fill(null), ...fcPred.map(Number)];
+const loData     = [...Array(n).fill(null), ...fcLow.map(Number)];
+const hiData     = [...Array(n).fill(null), ...fcHigh.map(Number)];
+
+new Chart(document.getElementById('forecastChart').getContext('2d'), {
+  type: 'line',
+  data: {
+    labels: allLabels,
+    datasets: [
+      { label:'Actual',       data:actualData, borderColor:'#4CAF50',
+        backgroundColor:'rgba(76,175,80,.08)', fill:true, tension:0.4, pointRadius:3, borderWidth:2 },
+      { label:'CI high',      data:hiData, borderColor:'transparent',
+        backgroundColor:'rgba(25,118,210,.12)', fill:'+1', pointRadius:0, tension:0.4 },
+      { label:'CI low',       data:loData, borderColor:'transparent',
+        backgroundColor:'rgba(25,118,210,.12)', fill:false, pointRadius:0, tension:0.4 },
+      { label:'ML prediction',data:predData, borderColor:'#1976d2',
+        backgroundColor:'transparent', fill:false, tension:0.4,
+        pointRadius:5, borderWidth:2.5, borderDash:[6,3], pointBackgroundColor:'#1976d2' },
+    ]
+  },
+  options: {
+    responsive:true,
+    interaction:{ mode:'index', intersect:false },
+    plugins:{
+      legend:{ position:'top', labels:{
+        filter: i => !i.text.startsWith('CI'),
+        boxWidth:14, font:{size:12}
+      }},
+      tooltip:{ callbacks:{
+        label: ctx => ctx.dataset.label.startsWith('CI') ? null
+                     : ctx.dataset.label+': '+(ctx.parsed.y??'—')+' meals',
+        afterBody: items => {
+          const idx = items[0]?.dataIndex;
+          if (idx >= {{ historical_daily|length }}) {
+            const lo=loData[idx], hi=hiData[idx];
+            if (lo!=null) return ['Range: '+lo+'–'+hi];
+          }
+          return [];
+        }
+      }}
+    },
+    scales:{
+      x:{ ticks:{ maxRotation:45, font:{size:10} } },
+      y:{ beginAtZero:true, ticks:{ font:{size:11} } }
+    }
+  }
+});
+</script>
+</body>
+</html>

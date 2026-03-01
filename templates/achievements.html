@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Achievements – IntelliMess</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .ach-wrap { max-width: 960px; margin: 28px auto; padding: 0 20px 60px; }
+
+    /* ── Hero ── */
+    .streak-hero {
+      background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%);
+      border-radius: 22px; padding: 32px 36px;
+      display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+      margin-bottom: 24px; color: #fff;
+      box-shadow: 0 8px 32px rgba(21,101,192,.35);
+      position: relative; overflow: hidden;
+    }
+    .streak-hero::before {
+      content: '🔥'; position: absolute; right: -10px; top: -20px;
+      font-size: 160px; opacity: .07; line-height: 1; pointer-events: none;
+    }
+    .streak-big { text-align: center; flex-shrink: 0; }
+    .streak-big .num {
+      font-size: 76px; font-weight: 800; line-height: 1;
+      background: linear-gradient(135deg, #ffd600, #ff6d00);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .streak-big .lbl { font-size: 12px; opacity: .7; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px; }
+    .streak-divider { width: 1px; height: 90px; background: rgba(255,255,255,.2); flex-shrink: 0; }
+    .streak-stats { display: flex; gap: 32px; flex-wrap: wrap; flex: 1; }
+    .streak-stat .val { font-size: 30px; font-weight: 700; }
+    .streak-stat .lbl { font-size: 11px; opacity: .6; margin-top: 3px; text-transform: uppercase; letter-spacing: .5px; }
+    .rank-chip {
+      margin-left: auto; background: rgba(255,255,255,.12);
+      border: 1.5px solid rgba(255,255,255,.25);
+      border-radius: 16px; padding: 16px 24px; text-align: center; flex-shrink: 0;
+    }
+    .rank-chip .rnum { font-size: 36px; font-weight: 800; }
+    .rank-chip .rlbl { font-size: 10px; opacity: .65; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* ── Progress bar ── */
+    .next-badge-bar {
+      background: #fff; border-radius: 16px; padding: 18px 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07); margin-bottom: 24px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .nb-icon { font-size: 34px; flex-shrink: 0; }
+    .nb-info { flex: 1; }
+    .nb-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; }
+    .progress-track { height: 11px; background: #f0f0f0; border-radius: 20px; overflow: hidden; }
+    .progress-fill  { height: 100%; border-radius: 20px;
+                      background: linear-gradient(90deg, #ffd600, #ff6d00); transition: width .7s ease; }
+    .nb-pct { font-size: 15px; font-weight: 800; color: #ff6d00; flex-shrink: 0; }
+
+    /* ── Section ── */
+    .section-hdr {
+      font-size: 16px; font-weight: 700; color: #333;
+      margin: 28px 0 14px; display: flex; align-items: center; gap: 10px;
+    }
+    .section-hdr::after { content:''; flex:1; height:2px; background:#f0f0f0; border-radius:2px; }
+
+    /* ── 7-day heatmap ── */
+    .heatmap-card {
+      background: #fff; border-radius: 16px; padding: 20px 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07); margin-bottom: 28px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .hm-label { font-size: 12px; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-right: 4px; }
+    .day-box {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; gap: 2px; cursor: default;
+      transition: transform .2s;
+    }
+    .day-box:hover { transform: scale(1.1); }
+    .day-box .day-name { font-size: 9px; opacity: .8; }
+    .day-box.done  { background: linear-gradient(135deg, #4CAF50, #2e7d32); color: #fff; box-shadow: 0 2px 8px rgba(76,175,80,.3); }
+    .day-box.miss  { background: #f5f5f5; color: #ccc; }
+    .day-box.today { outline: 2.5px solid #1976d2; outline-offset: 2px; }
+    .streak-fire { font-size: 22px; margin-left: 6px; }
+
+    /* ── Badges ── */
+    .badges-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+      gap: 14px; margin-bottom: 32px;
+    }
+    .badge-card {
+      background: #fff; border-radius: 18px; padding: 24px 16px 18px;
+      text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      transition: all .3s; position: relative; overflow: hidden;
+      border: 2px solid transparent;
+    }
+    .badge-card.earned {
+      border-color: var(--bc);
+      box-shadow: 0 4px 20px rgba(0,0,0,.1), 0 0 0 1px var(--bc);
+    }
+    .badge-card.earned:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,.14); }
+    .badge-card.locked { opacity: .4; filter: grayscale(.8); }
+    .badge-icon { font-size: 44px; display: block; margin-bottom: 10px; line-height: 1; }
+    .badge-card.earned .badge-icon { animation: badgePop .5s ease forwards; }
+    .badge-name { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 4px; }
+    .badge-desc { font-size: 11px; color: #999; line-height: 1.45; }
+    .badge-date { font-size: 10px; color: #bbb; margin-top: 8px; }
+    .earned-ribbon {
+      position: absolute; top: 12px; right: -12px; background: var(--bc); color: #fff;
+      font-size: 8px; font-weight: 800; padding: 3px 20px; transform: rotate(35deg);
+      letter-spacing: .5px; text-transform: uppercase;
+    }
+    .locked-icon { position: absolute; top: 12px; right: 12px; font-size: 12px; color: #ddd; }
+
+    @keyframes badgePop {
+      0%   { transform: scale(.5) rotate(-10deg); opacity: 0; }
+      60%  { transform: scale(1.2) rotate(3deg); }
+      100% { transform: scale(1) rotate(0); opacity: 1; }
+    }
+
+    /* ── Leaderboard ── */
+    .leaderboard { background: #fff; border-radius: 18px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .lb-header {
+      display: flex; align-items: center; gap: 14px; padding: 11px 22px;
+      background: #f8f8f8; font-size: 10px; font-weight: 700;
+      color: #aaa; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .lb-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 22px; border-bottom: 1px solid #f5f5f5; transition: background .2s;
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-row:hover { background: #fafafa; }
+    .lb-row.is-me { background: #e8f5e9 !important; }
+    .lb-pos { font-size: 18px; font-weight: 800; min-width: 38px; text-align: center; color: #ccc; }
+    .lb-pos.p1 { color: #ffd600; } .lb-pos.p2 { color: #9e9e9e; } .lb-pos.p3 { color: #ff7043; }
+    .lb-avatar {
+      width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; color: #fff;
+    }
+    .lb-name { flex: 1; font-size: 15px; font-weight: 600; color: #333; }
+    .you-chip { font-size: 10px; background: #4CAF50; color: #fff;
+                border-radius: 10px; padding: 1px 8px; margin-left: 7px; font-weight: 700; }
+    .lb-badges-col { font-size: 13px; color: #888; min-width: 80px; text-align: right; }
+    .lb-streak-col { font-size: 14px; font-weight: 700; color: #ff6d00; min-width: 64px; text-align: right; }
+    .lb-total-col  { font-size: 12px; color: #aaa; min-width: 80px; text-align: right; }
+
+    .rank-outside { margin-top: 14px; text-align: center; font-size: 13px; color: #888; }
+
+    @media(max-width:620px) {
+      .streak-hero { padding: 20px 16px; }
+      .streak-big .num { font-size: 54px; }
+      .streak-divider { display: none; }
+      .badges-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+      .lb-total-col, .lb-badges-col { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+  <nav class="navbar">
+    <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+    <div class="nav-links">
+      <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+      <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+      <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+      <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="ach-wrap">
+
+    <!-- ══ STREAK HERO ══════════════════════════════════════════════ -->
+    <div class="streak-hero">
+      <div class="streak-big">
+        <div class="num">{{ streak.current_streak or 0 }}</div>
+        <div class="lbl">Day Streak 🔥</div>
+      </div>
+      <div class="streak-divider"></div>
+      <div class="streak-stats">
+        <div class="streak-stat">
+          <div class="val">{{ streak.longest_streak or 0 }}</div>
+          <div class="lbl">Best Streak</div>
+        </div>
+        <div class="streak-stat">
+          <div class="val">{{ streak.total_feedbacks or 0 }}</div>
+          <div class="lbl">Total Feedbacks</div>
+        </div>
+        <div class="streak-stat">
+          <div class="val">{{ "%.1f"|format(streak.avg_rating_given or 0) }} ⭐</div>
+          <div class="lbl">Avg Rating Given</div>
+        </div>
+        <div class="streak-stat">
+          <div class="val">{{ badges | selectattr('earned') | list | length }} / {{ badges | length }}</div>
+          <div class="lbl">Badges</div>
+        </div>
+      </div>
+      <div class="rank-chip">
+        <div class="rnum">#{{ my_rank }}</div>
+        <div class="rlbl">Your Rank</div>
+      </div>
+    </div>
+
+    <!-- ══ NEXT BADGE PROGRESS ══════════════════════════════════════ -->
+    {% set cs = streak.current_streak or 0 %}
+    {% set tf = streak.total_feedbacks or 0 %}
+    {% if cs < 3 %}
+      {% set nb_icon='🔥' %}{% set nb_name='On a Roll' %}
+      {% set nb_cur=cs %}{% set nb_goal=3 %}{% set nb_hint='Give feedback 3 days in a row' %}
+    {% elif cs < 7 %}
+      {% set nb_icon='⭐' %}{% set nb_name='Week Warrior' %}
+      {% set nb_cur=cs %}{% set nb_goal=7 %}{% set nb_hint='7-day streak — keep going!' %}
+    {% elif cs < 14 %}
+      {% set nb_icon='🏅' %}{% set nb_name='Fortnight Pro' %}
+      {% set nb_cur=cs %}{% set nb_goal=14 %}{% set nb_hint='14 days in a row — you\'re on fire!' %}
+    {% elif tf < 25 %}
+      {% set nb_icon='🍽️' %}{% set nb_name='Connoisseur' %}
+      {% set nb_cur=tf %}{% set nb_goal=25 %}{% set nb_hint='Give 25 total feedbacks' %}
+    {% elif tf < 50 %}
+      {% set nb_icon='🏆' %}{% set nb_name='Mess Legend' %}
+      {% set nb_cur=tf %}{% set nb_goal=50 %}{% set nb_hint='Give 50 total feedbacks — almost legendary!' %}
+    {% else %}
+      {% set nb_icon='👑' %}{% set nb_name='Monthly Hero' %}
+      {% set nb_cur=cs %}{% set nb_goal=30 %}{% set nb_hint='30-day streak — the ultimate achievement!' %}
+    {% endif %}
+    {% set pct = [((nb_cur / nb_goal * 100) | int), 100] | min %}
+
+    <div class="next-badge-bar">
+      <div class="nb-icon">{{ nb_icon }}</div>
+      <div class="nb-info">
+        <div class="nb-title">Next badge: <strong>{{ nb_name }}</strong> — {{ nb_hint }}</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="progress-track" style="flex:1;">
+            <div class="progress-fill" style="width:{{ pct }}%;"></div>
+          </div>
+          <span style="font-size:12px;color:#aaa;flex-shrink:0;">{{ nb_cur }} / {{ nb_goal }}</span>
+        </div>
+      </div>
+      <div class="nb-pct">{{ pct }}%</div>
+    </div>
+
+    <!-- ══ 7-DAY HEATMAP ════════════════════════════════════════════ -->
+    <div class="section-hdr">
+      <i class="fas fa-calendar-check" style="color:#4CAF50;"></i> Last 7 Days
+    </div>
+    <div class="heatmap-card">
+      <span class="hm-label">Feedback streak:</span>
+      {% for d in last_7_days %}
+      <div class="day-box {{ 'done' if d.done else 'miss' }} {{ 'today' if d.is_today }}"
+           title="{{ d.label }}{{ ' ✓' if d.done else ' — no feedback' }}">
+        <span>{{ '✓' if d.done else '·' }}</span>
+        <span class="day-name">{{ d.short }}</span>
+      </div>
+      {% endfor %}
+      {% if streak.current_streak >= 2 %}
+      <span class="streak-fire">🔥 {{ streak.current_streak }} day{{ 's' if streak.current_streak != 1 }}</span>
+      {% elif streak.current_streak == 0 %}
+      <span style="font-size:13px;color:#bbb;margin-left:8px;">Give feedback today to start a streak!</span>
+      {% endif %}
+    </div>
+
+    <!-- ══ BADGES ════════════════════════════════════════════════════ -->
+    <div class="section-hdr">
+      <i class="fas fa-medal" style="color:#ffd600;"></i> Badges
+      <span style="font-size:13px;font-weight:400;color:#aaa;">
+        {{ badges | selectattr('earned') | list | length }} earned · {{ badges | rejectattr('earned') | list | length }} locked
+      </span>
+    </div>
+    <div class="badges-grid">
+      {% for b in badges %}
+      <div class="badge-card {{ 'earned' if b.earned else 'locked' }}" style="--bc:{{ b.color }};">
+        {% if b.earned %}
+          <div class="earned-ribbon">Earned</div>
+        {% else %}
+          <i class="fas fa-lock locked-icon"></i>
+        {% endif %}
+        <span class="badge-icon">{{ b.icon }}</span>
+        <div class="badge-name">{{ b.name }}</div>
+        <div class="badge-desc">{{ b.desc }}</div>
+        {% if b.earned and b.awarded_at %}
+          <div class="badge-date">
+            <i class="fas fa-check-circle" style="color:{{ b.color }};font-size:9px;"></i>
+            {{ b.awarded_at.strftime('%d %b %Y') }}
+          </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ══ LEADERBOARD ═══════════════════════════════════════════════ -->
+    <div class="section-hdr">
+      <i class="fas fa-trophy" style="color:#ffd600;"></i> Leaderboard
+      <span style="font-size:13px;font-weight:400;color:#aaa;">Top students by streak &amp; feedbacks</span>
+    </div>
+
+    <div class="leaderboard">
+      <div class="lb-header">
+        <div style="min-width:38px;"> </div>
+        <div style="width:42px;flex-shrink:0;"></div>
+        <div style="flex:1;">Student</div>
+        <div style="min-width:80px;text-align:right;">Badges</div>
+        <div style="min-width:64px;text-align:right;">Streak</div>
+        <div style="min-width:80px;text-align:right;">Feedbacks</div>
+      </div>
+
+      {% for row in leaderboard %}
+        {% set pos = loop.index %}
+        {% set is_me = (row.user_id == user_id) %}
+        {% if pos == 1 %}{% set av='#ffd600' %}
+        {% elif pos == 2 %}{% set av='#9e9e9e' %}
+        {% elif pos == 3 %}{% set av='#ff7043' %}
+        {% elif pos <= 5 %}{% set av='#1976d2' %}
+        {% else %}{% set av='#78909c' %}{% endif %}
+
+        <div class="lb-row {{ 'is-me' if is_me }}">
+          <div class="lb-pos {{ 'p1' if pos==1 else ('p2' if pos==2 else ('p3' if pos==3 else '')) }}">
+            {% if pos==1 %}🥇{% elif pos==2 %}🥈{% elif pos==3 %}🥉{% else %}{{ pos }}{% endif %}
+          </div>
+          <div class="lb-avatar" style="background:{{ av }};">{{ row.username[0]|upper }}</div>
+          <div class="lb-name">
+            {{ row.username }}
+            {% if is_me %}<span class="you-chip">You</span>{% endif %}
+          </div>
+          <div class="lb-badges-col">
+            {% if row.badge_count > 0 %}
+              {{ '⭐' * [row.badge_count, 5]|min }}
+              <span style="color:#ccc;font-size:11px;">×{{ row.badge_count }}</span>
+            {% else %}—{% endif %}
+          </div>
+          <div class="lb-streak-col">{{ row.current_streak }} 🔥</div>
+          <div class="lb-total-col">{{ row.total_feedbacks }}</div>
+        </div>
+      {% else %}
+        <div class="lb-row" style="justify-content:center;color:#bbb;font-size:14px;padding:30px;">
+          No one has given feedback yet — be the first! 🌱
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if my_rank is not none and my_rank > 10 %}
+    <div class="rank-outside">
+      You're ranked <strong style="color:#1976d2;">#{{ my_rank }}</strong> overall —
+      give more feedback to climb the leaderboard! 🚀
+    </div>
+    {% endif %}
+
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/feedback" style="display:inline-flex;align-items:center;gap:8px;
+         background:linear-gradient(135deg,#4CAF50,#2e7d32);color:#fff;
+         padding:13px 28px;border-radius:25px;font-weight:700;font-size:14px;
+         text-decoration:none;box-shadow:0 4px 15px rgba(76,175,80,.3);
+         transition:all .3s;">
+        <i class="fas fa-comment-dots"></i> Give Feedback &amp; Grow Your Streak
+      </a>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

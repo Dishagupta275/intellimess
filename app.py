@@ -155,9 +155,20 @@ def student_dashboard():
 
     cur.close(); conn.close()
 
+    # Fetch streak for dashboard mini-display
+    conn2 = get_db_connection()
+    cur2 = conn2.cursor(dictionary=True, buffered=True)
+    cur2.execute("SELECT current_streak, total_feedbacks FROM user_streaks WHERE user_id=%s", (user_id,))
+    streak_info = cur2.fetchone() or {'current_streak': 0, 'total_feedbacks': 0}
+    cur2.execute("SELECT badge_key FROM user_badges WHERE user_id=%s ORDER BY awarded_at DESC LIMIT 3", (user_id,))
+    recent_badges = [r['badge_key'] for r in cur2.fetchall()]
+    cur2.close(); conn2.close()
+
     return render_template("student.html",
         username=session.get('username', ''),
-        reminder=reminder
+        reminder=reminder,
+        streak_info=streak_info,
+        recent_badges=recent_badges,
     )
 
 # ---------------- MENU ----------------
@@ -358,9 +369,11 @@ def submit_feedback():
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (user_id, booking_id, dish_id, rating, feedback_date, comment))
     conn.commit()
+    # Update streak and check for new badges
+    update_streak_and_badges(user_id, conn)
     cursor.close()
     conn.close()
-    return redirect('/student')
+    return redirect('/achievements')
 
 # ================================================================
 # ----------------  POLLING SYSTEM  ------------------------------
@@ -632,7 +645,7 @@ def admin():
     veg_count = int(ms['veg_students'] or 0) + int(ms['veg_guests'] or 0)
     nonveg_count = int(ms['nonveg_students'] or 0) + int(ms['nonveg_guests'] or 0)
 
-    # lightweight queries only — heavy analytics moved to sub-pages
+    # lightweight queries only
     cursor.execute("SELECT COUNT(*) as total FROM bookings")
     bookings_total = cursor.fetchone()['total'] or 0
     cursor.execute("SELECT COUNT(*) as cnt FROM polls WHERE status='open'")
@@ -646,6 +659,54 @@ def admin():
     fb_bk = cursor.fetchone()['fb'] or 0
     feedback_rate = round(fb_bk / total_bk * 100, 1)
 
+    # ── Engagement / gamification summary ──
+    cursor.execute("""
+        SELECT COUNT(*) as active_streaks FROM user_streaks
+        WHERE current_streak > 0
+    """)
+    active_streaks = cursor.fetchone()['active_streaks'] or 0
+
+    cursor.execute("""
+        SELECT u.username, us.current_streak, us.total_feedbacks,
+               (SELECT COUNT(*) FROM user_badges ub WHERE ub.user_id=u.id) as badges
+        FROM user_streaks us JOIN users u ON us.user_id=u.id
+        WHERE u.role='student' AND us.current_streak > 0
+        ORDER BY us.current_streak DESC LIMIT 5
+    """)
+    top_streaks = cursor.fetchall() or []
+
+    cursor.execute("SELECT COUNT(*) as c FROM user_badges")
+    total_badges_awarded = cursor.fetchone()['c'] or 0
+
+    cursor.execute("""
+        SELECT badge_key, COUNT(*) as cnt FROM user_badges
+        GROUP BY badge_key ORDER BY cnt DESC LIMIT 3
+    """)
+    top_badge_rows = cursor.fetchall() or []
+    badge_icons = {'first_bite':'🌱','on_a_roll':'🔥','week_warrior':'⭐','fortnight':'🏅',
+                   'monthly_hero':'👑','critic':'🎯','connoisseur':'🍽️','mess_legend':'🏆',
+                   'five_star':'💫','honest_critic':'📝'}
+    top_badges = [{'icon': badge_icons.get(r['badge_key'],'🏅'),
+                   'key':  r['badge_key'].replace('_',' ').title(),
+                   'cnt':  r['cnt']} for r in top_badge_rows]
+
+    # ── Comeback suggestions (high-rated dishes not served in 14+ days) ──
+    cursor.execute("""
+        SELECT d.dish_name,
+               ROUND(AVG(f.rating), 1) as avg_rating,
+               MAX(b.booking_date) as last_served,
+               DATEDIFF(CURDATE(), MAX(b.booking_date)) as days_ago
+        FROM feedback f
+        JOIN dishes d ON f.dish_id = d.id
+        JOIN bookings b ON f.booking_id = b.id
+        GROUP BY d.dish_name
+        HAVING avg_rating >= 4.0
+           AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        ORDER BY avg_rating DESC
+        LIMIT 5
+    """)
+    comeback_dishes = cursor.fetchall() or []
+
     cursor.close()
     conn.close()
 
@@ -655,6 +716,9 @@ def admin():
         total_guests=total_guests, veg_count=veg_count, nonveg_count=nonveg_count,
         bookings_total=bookings_total, open_polls_count=open_polls_count,
         overall_avg=overall_avg, feedback_rate=feedback_rate,
+        active_streaks=active_streaks, top_streaks=top_streaks,
+        total_badges_awarded=total_badges_awarded, top_badges=top_badges,
+        comeback_dishes=comeback_dishes,
     )
 
 
@@ -1114,6 +1178,188 @@ def admin_menu_remove():
 
 
 # ================================================================
+# --------  GAMIFICATION: STREAKS & BADGES  ----------------------
+# ================================================================
+
+BADGES = {
+    'first_bite':    {'icon': '🌱', 'name': 'First Bite',     'desc': 'Gave your first feedback',          'color': '#66bb6a'},
+    'on_a_roll':     {'icon': '🔥', 'name': 'On a Roll',      'desc': '3-day feedback streak',             'color': '#ff7043'},
+    'week_warrior':  {'icon': '⭐', 'name': 'Week Warrior',   'desc': '7-day feedback streak',             'color': '#ffd600'},
+    'fortnight':     {'icon': '🏅', 'name': 'Fortnight Pro',  'desc': '14-day feedback streak',            'color': '#ab47bc'},
+    'monthly_hero':  {'icon': '👑', 'name': 'Monthly Hero',   'desc': '30-day feedback streak',            'color': '#f9a825'},
+    'critic':        {'icon': '🎯', 'name': 'Food Critic',    'desc': '10 total feedback submissions',     'color': '#1976d2'},
+    'connoisseur':   {'icon': '🍽️', 'name': 'Connoisseur',   'desc': '25 total feedback submissions',     'color': '#00897b'},
+    'mess_legend':   {'icon': '🏆', 'name': 'Mess Legend',    'desc': '50 total feedback submissions',     'color': '#e65100'},
+    'five_star':     {'icon': '💫', 'name': 'Five Star',      'desc': 'Gave 5 stars 5 times',              'color': '#ffd600'},
+    'honest_critic': {'icon': '📝', 'name': 'Honest Critic',  'desc': 'Gave a 1-star rating (brave!)',     'color': '#78909c'},
+}
+
+def update_streak_and_badges(user_id, conn):
+    """Recalculate streak, update user_streaks, award new badges. Call after every feedback submit."""
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Get all distinct feedback dates for this user, ordered ascending
+    cursor.execute("""
+        SELECT DISTINCT feedback_date FROM feedback
+        WHERE user_id = %s ORDER BY feedback_date ASC
+    """, (user_id,))
+    rows = cursor.fetchall()
+    dates = [r['feedback_date'] for r in rows]
+
+    total_feedbacks = 0
+    cursor.execute("SELECT COUNT(*) as c FROM feedback WHERE user_id=%s", (user_id,))
+    total_feedbacks = cursor.fetchone()['c']
+
+    cursor.execute("SELECT AVG(rating) as a, SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END) as fives, SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END) as ones FROM feedback WHERE user_id=%s", (user_id,))
+    rating_row = cursor.fetchone()
+    avg_r  = round(float(rating_row['a']), 2) if rating_row['a'] else 0
+    fives  = rating_row['fives'] or 0
+    ones   = rating_row['ones']  or 0
+
+    # Calculate current streak (working backwards from today)
+    from datetime import date as dt_date, timedelta as td
+    today = dt_date.today()
+    current_streak = 0
+    check = today
+    date_set = set(dates)
+    # if no feedback today, check from yesterday
+    if check not in date_set:
+        check = today - td(days=1)
+    while check in date_set:
+        current_streak += 1
+        check = check - td(days=1)
+
+    # Calculate longest streak
+    longest = 0
+    run = 1
+    for i in range(1, len(dates)):
+        if (dates[i] - dates[i-1]).days == 1:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 1
+    longest = max(longest, run, current_streak)
+
+    last_date = dates[-1] if dates else None
+
+    # Upsert into user_streaks
+    cursor2 = conn.cursor()
+    cursor2.execute("""
+        INSERT INTO user_streaks (user_id, current_streak, longest_streak,
+            last_feedback_date, total_feedbacks, avg_rating_given)
+        VALUES (%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE
+            current_streak=VALUES(current_streak),
+            longest_streak=VALUES(longest_streak),
+            last_feedback_date=VALUES(last_feedback_date),
+            total_feedbacks=VALUES(total_feedbacks),
+            avg_rating_given=VALUES(avg_rating_given)
+    """, (user_id, current_streak, longest, last_date, total_feedbacks, avg_r))
+
+    # Determine which badges this user has earned
+    earned = set()
+    if total_feedbacks >= 1:  earned.add('first_bite')
+    if current_streak >= 3:   earned.add('on_a_roll')
+    if current_streak >= 7:   earned.add('week_warrior')
+    if current_streak >= 14:  earned.add('fortnight')
+    if current_streak >= 30:  earned.add('monthly_hero')
+    if total_feedbacks >= 10: earned.add('critic')
+    if total_feedbacks >= 25: earned.add('connoisseur')
+    if total_feedbacks >= 50: earned.add('mess_legend')
+    if fives >= 5:            earned.add('five_star')
+    if ones >= 1:             earned.add('honest_critic')
+
+    # Insert newly earned badges (ignore duplicates)
+    for badge_key in earned:
+        cursor2.execute("""
+            INSERT IGNORE INTO user_badges (user_id, badge_key) VALUES (%s,%s)
+        """, (user_id, badge_key))
+
+    conn.commit()
+    cursor.close(); cursor2.close()
+
+
+@app.route('/achievements')
+def achievements():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Get this user's streak data
+    cursor.execute("SELECT * FROM user_streaks WHERE user_id=%s", (user_id,))
+    streak_data = cursor.fetchone() or {
+        'current_streak': 0, 'longest_streak': 0,
+        'total_feedbacks': 0, 'avg_rating_given': 0,
+        'last_feedback_date': None
+    }
+
+    # Get earned badges
+    cursor.execute("SELECT badge_key, awarded_at FROM user_badges WHERE user_id=%s ORDER BY awarded_at", (user_id,))
+    earned_raw = {r['badge_key']: r['awarded_at'] for r in cursor.fetchall()}
+
+    # Build badge list: earned + locked
+    all_badges = []
+    for key, info in BADGES.items():
+        all_badges.append({**info, 'key': key,
+            'earned': key in earned_raw,
+            'awarded_at': earned_raw.get(key)
+        })
+
+    # Leaderboard: top 10 by current streak, then total feedbacks
+    cursor.execute("""
+        SELECT u.username, us.current_streak, us.longest_streak,
+               us.total_feedbacks, us.avg_rating_given,
+               (SELECT COUNT(*) FROM user_badges ub WHERE ub.user_id=u.id) as badge_count,
+               us.user_id
+        FROM user_streaks us JOIN users u ON us.user_id=u.id
+        WHERE u.role='student'
+        ORDER BY us.current_streak DESC, us.total_feedbacks DESC
+        LIMIT 10
+    """)
+    leaderboard = cursor.fetchall() or []
+
+    # My rank
+    cursor.execute("""
+        SELECT COUNT(*)+1 as rank FROM user_streaks us JOIN users u ON us.user_id=u.id
+        WHERE u.role='student'
+        AND (us.current_streak > (SELECT COALESCE(current_streak,0) FROM user_streaks WHERE user_id=%s)
+        OR (us.current_streak = (SELECT COALESCE(current_streak,0) FROM user_streaks WHERE user_id=%s)
+            AND us.total_feedbacks > (SELECT COALESCE(total_feedbacks,0) FROM user_streaks WHERE user_id=%s)))
+    """, (user_id, user_id, user_id))
+    rank_row = cursor.fetchone()
+    my_rank = rank_row['rank'] if rank_row else '—'
+
+    # Build last-7-days heatmap data
+    from datetime import date as dt_date, timedelta as dt_td
+    today_d = dt_date.today()
+    feedback_dates_raw = []
+    cursor2 = conn.cursor(dictionary=True, buffered=True)
+    cursor2.execute("SELECT DISTINCT feedback_date FROM feedback WHERE user_id=%s", (user_id,))
+    feedback_dates_raw = {r['feedback_date'] for r in cursor2.fetchall()}
+    cursor2.close()
+
+    last_7_days = []
+    for i in range(6, -1, -1):
+        d = today_d - dt_td(days=i)
+        last_7_days.append({
+            'label':    d.strftime('%A %d %b'),
+            'short':    d.strftime('%a')[:2],
+            'done':     d in feedback_dates_raw,
+            'is_today': d == today_d,
+        })
+
+    cursor.close(); conn.close()
+    return render_template('achievements.html',
+        username=session.get('username',''),
+        streak=streak_data, badges=all_badges,
+        leaderboard=leaderboard, my_rank=my_rank,
+        user_id=user_id, BADGES=BADGES,
+        last_7_days=last_7_days)
+
+
+# ================================================================
 # --------  DISH SUGGESTIONS  ------------------------------------
 # ================================================================
 
@@ -1248,6 +1494,246 @@ def admin_suggestion_status():
     conn.commit()
     cursor.close(); conn.close()
     return redirect('/admin/suggestions')
+
+# ================================================================
+# --------  DEMAND FORECASTING  (scikit-learn) -------------------
+# ================================================================
+@app.route('/admin/forecast')
+def admin_forecast():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+
+    import numpy as np
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.preprocessing import LabelEncoder
+    from sklearn.model_selection import cross_val_score
+    from sklearn.metrics import mean_absolute_error
+
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    now    = datetime.now()
+    today  = now.date()
+    meals  = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
+    MEAL_ENC = {m: i for i, m in enumerate(meals)}
+
+    # ── 1. Pull all historical booking rows ──────────────────────
+    cursor.execute("""
+        SELECT booking_date,
+               meal,
+               COUNT(*) + COALESCE(SUM(guest_count), 0) AS headcount
+        FROM bookings
+        WHERE booking_date < CURDATE()
+        GROUP BY booking_date, meal
+        ORDER BY booking_date
+    """)
+    raw = cursor.fetchall() or []
+
+    # ── 2. Build feature matrix ──────────────────────────────────
+    # Features per (date, meal):
+    #   0  day_of_week       0=Mon … 6=Sun
+    #   1  meal_encoded      0=Breakfast … 3=Dinner
+    #   2  week_of_year      1-53
+    #   3  month             1-12
+    #   4  is_weekend        0/1
+    #   5  lag_7             headcount same meal 7 days ago
+    #   6  lag_14            headcount same meal 14 days ago
+    #   7  rolling_4w_avg    avg headcount this meal, past 4 same-DOW
+
+    # Build lookup: (date, meal) -> headcount
+    from collections import defaultdict
+    hist_lookup = {}
+    for r in raw:
+        hist_lookup[(r['booking_date'], r['meal'])] = int(r['headcount'])
+
+    def get_hc(date, meal, default=0):
+        return hist_lookup.get((date, meal), default)
+
+    def rolling_dow_avg(date, meal, weeks=4):
+        vals = [get_hc(date - timedelta(days=7*w), meal)
+                for w in range(1, weeks+1)
+                if (date - timedelta(days=7*w), meal) in hist_lookup]
+        return round(sum(vals) / len(vals), 2) if vals else 0.0
+
+    X, y = [], []
+    for r in raw:
+        d    = r['booking_date']
+        meal = r['meal']
+        hc   = int(r['headcount'])
+        feat = [
+            d.weekday(),
+            MEAL_ENC[meal],
+            d.isocalendar()[1],   # week of year
+            d.month,
+            1 if d.weekday() >= 5 else 0,
+            get_hc(d - timedelta(days=7),  meal),
+            get_hc(d - timedelta(days=14), meal),
+            rolling_dow_avg(d, meal),
+        ]
+        X.append(feat)
+        y.append(hc)
+
+    X = np.array(X, dtype=float)
+    y = np.array(y, dtype=float)
+
+    # ── 3. Train Gradient Boosting model ─────────────────────────
+    fallback_mode = False
+    model_info = {}
+
+    if len(X) >= 8:   # need at least a few rows to train
+        model = GradientBoostingRegressor(
+            n_estimators=200,
+            learning_rate=0.08,
+            max_depth=4,
+            subsample=0.85,
+            min_samples_leaf=2,
+            random_state=42,
+        )
+        model.fit(X, y)
+
+        # Cross-validated MAE (how many meals off on average)
+        if len(X) >= 5:
+            cv_scores = cross_val_score(model, X, y,
+                                        scoring='neg_mean_absolute_error',
+                                        cv=min(5, len(X)))
+            mae = round(-cv_scores.mean(), 1)
+            r2  = round(model.score(X, y), 3)
+        else:
+            preds = model.predict(X)
+            mae = round(mean_absolute_error(y, preds), 1)
+            r2  = round(model.score(X, y), 3)
+
+        # Feature importances
+        feat_names = ['Day of Week','Meal','Week #','Month',
+                      'Is Weekend','Lag 7d','Lag 14d','4-week avg']
+        importances = sorted(zip(feat_names, model.feature_importances_),
+                             key=lambda x: x[1], reverse=True)
+        model_info = {
+            'mae': mae, 'r2': r2,
+            'n_samples': len(X),
+            'importances': [(n, round(v*100, 1)) for n, v in importances[:5]],
+        }
+    else:
+        fallback_mode = True
+
+    # ── 4. Generate 7-day forecast ───────────────────────────────
+    forecast = []
+    day_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+    for offset in range(1, 8):
+        fdate = today + timedelta(days=offset)
+        dow   = fdate.weekday()
+
+        # Firm bookings already in system for that date
+        cursor.execute("""
+            SELECT meal, COUNT(*) + COALESCE(SUM(guest_count),0) as booked
+            FROM bookings WHERE booking_date=%s GROUP BY meal
+        """, (fdate,))
+        booked_map = {r['meal']: int(r['booked']) for r in cursor.fetchall()}
+
+        meals_forecast = []
+        for meal in meals:
+            booked = booked_map.get(meal, 0)
+
+            if fallback_mode:
+                # No enough data — use simple DOW average
+                hist_vals = [get_hc(fdate - timedelta(days=7*w), meal)
+                             for w in range(1, 5)
+                             if (fdate - timedelta(days=7*w), meal) in hist_lookup]
+                ml_pred = round(sum(hist_vals)/len(hist_vals)) if hist_vals else booked
+                ci_low = ci_high = ml_pred
+                confidence = 'low'
+            else:
+                feat = np.array([[
+                    dow,
+                    MEAL_ENC[meal],
+                    fdate.isocalendar()[1],
+                    fdate.month,
+                    1 if dow >= 5 else 0,
+                    get_hc(fdate - timedelta(days=7),  meal),
+                    get_hc(fdate - timedelta(days=14), meal),
+                    rolling_dow_avg(fdate, meal),
+                ]], dtype=float)
+
+                ml_pred = max(0, round(float(model.predict(feat)[0])))
+
+                # Confidence interval: ±1 MAE, expanded for further-out days
+                margin = mae * (1 + offset * 0.08)
+                ci_low  = max(0, round(ml_pred - margin))
+                ci_high = round(ml_pred + margin)
+
+                # Blend: weight firm bookings more when close
+                if offset == 1:
+                    w_booked = 0.65
+                elif offset <= 3:
+                    w_booked = 0.35
+                else:
+                    w_booked = 0.10
+
+                if booked > 0:
+                    ml_pred = round(booked * w_booked + ml_pred * (1 - w_booked))
+                    ci_low  = max(0, round(ci_low  * (1 - w_booked) + booked * w_booked * 0.85))
+                    ci_high = round(ci_high * (1 - w_booked) + booked * w_booked * 1.15)
+
+                confidence = 'high' if offset <= 3 else ('medium' if offset <= 5 else 'low')
+
+            # vs same meal last week
+            last_week_count = get_hc(fdate - timedelta(days=7), meal) or None
+            trend = ('up'   if last_week_count and ml_pred > last_week_count else
+                     'down' if last_week_count and ml_pred < last_week_count else 'flat')
+
+            meals_forecast.append({
+                'meal':           meal,
+                'booked':         booked,
+                'predicted':      ml_pred,
+                'ci_low':         ci_low,
+                'ci_high':        ci_high,
+                'suggested_prep': round(ci_high * 1.10),
+                'confidence':     confidence,
+                'last_week':      last_week_count,
+                'trend':          trend,
+            })
+
+        forecast.append({
+            'date':            fdate,
+            'label':           fdate.strftime('%a %d %b'),
+            'dow_label':       day_names[dow],
+            'meals':           meals_forecast,
+            'total_predicted': sum(m['predicted'] for m in meals_forecast),
+            'total_ci_low':    sum(m['ci_low']    for m in meals_forecast),
+            'total_ci_high':   sum(m['ci_high']   for m in meals_forecast),
+            'is_tomorrow':     offset == 1,
+        })
+
+    # ── 5. Summary stats ─────────────────────────────────────────
+    week_total_predicted = sum(d['total_predicted'] for d in forecast)
+    busiest_day          = max(forecast, key=lambda d: d['total_predicted'])
+    all_meals_flat       = [m for d in forecast for m in d['meals']]
+    busiest_meal_row     = max(all_meals_flat, key=lambda m: m['predicted'])
+
+    # Historical daily for chart (last 28 days)
+    cursor.execute("""
+        SELECT booking_date,
+               SUM(COALESCE(guest_count,0) + 1) as headcount
+        FROM bookings
+        WHERE booking_date >= CURDATE() - INTERVAL 28 DAY
+          AND booking_date < CURDATE()
+        GROUP BY booking_date ORDER BY booking_date
+    """)
+    historical_daily = cursor.fetchall() or []
+
+    cursor.close(); conn.close()
+
+    return render_template('admin_forecast.html',
+        forecast=forecast,
+        week_total_predicted=week_total_predicted,
+        busiest_day=busiest_day,
+        busiest_meal=busiest_meal_row,
+        historical_daily=historical_daily,
+        model_info=model_info,
+        fallback_mode=fallback_mode,
+        today=today,
+    )
+
 
 # ================================================================
 # --------  ADMIN SEPARATE SUB-PAGES  ----------------------------
