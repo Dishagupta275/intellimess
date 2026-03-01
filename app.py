@@ -2,14 +2,11 @@ from flask import Flask, render_template, request, redirect, session, Response
 import mysql.connector
 import os
 from datetime import datetime, timedelta
-try:
-    import pytz
-    IST = pytz.timezone('Asia/Kolkata')
-    def now_ist():
-        return datetime.now(IST).replace(tzinfo=None)
-except ImportError:
-    def now_ist():
-        return datetime.now()
+from datetime import timezone as _tz
+_IST_OFFSET = _tz(timedelta(hours=5, minutes=30))
+
+def now_ist():
+    return datetime.now(_tz.utc).astimezone(_IST_OFFSET).replace(tzinfo=None)
 
 
 
@@ -21,10 +18,10 @@ app.secret_key = os.environ.get("INTELLIMESS_SECRET", "intellimess_dev_secret_ch
 def get_db_connection():
     return mysql.connector.connect(
         host="boepijlcqxhibaudjeck-mysql.services.clever-cloud.com",
-        port=3306,        # Railway uses a non-3306 port
         user="ublerrfhpva5tzcq",
         password="sNgAJyIWpiEg9c2dB2sX",
-        database="boepijlcqxhibaudjeck"
+        database="boepijlcqxhibaudjeck",
+        port=3306,
     )
 
 # ---------------- HOME ----------------
