@@ -11,10 +11,11 @@ app.secret_key = "intellimess_secret"
 # ---------------- DATABASE ----------------
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="8121",
-        database="intellimess"
+        host="boepijlcqxhibaudjeck-mysql.services.clever-cloud.com",
+        port=3306,        # Railway uses a non-3306 port
+        user="ublerrfhpva5tzcq",
+        password="sNgAJyIWpiEg9c2dB2sX",
+        database="boepijlcqxhibaudjeck"
     )
 
 # ---------------- HOME ----------------

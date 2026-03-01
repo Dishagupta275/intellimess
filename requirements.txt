@@ -1,2 +1,6 @@
 flask
 mysql-connector-python
+matplotlib
+numpy
+reportlab
+scikit-learn
