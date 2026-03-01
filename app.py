@@ -2,20 +2,29 @@ from flask import Flask, render_template, request, redirect, session, Response
 import mysql.connector
 import os
 from datetime import datetime, timedelta
+try:
+    import pytz
+    IST = pytz.timezone('Asia/Kolkata')
+    def now_ist():
+        return datetime.now(IST).replace(tzinfo=None)
+except ImportError:
+    def now_ist():
+        return datetime.now()
 
 
 
 app = Flask(__name__)
-app.secret_key = "intellimess_secret"
+# Secret key — set INTELLIMESS_SECRET env var in production, falls back for local dev
+app.secret_key = os.environ.get("INTELLIMESS_SECRET", "intellimess_dev_secret_change_me")
 
 # ---------------- DATABASE ----------------
 def get_db_connection():
     return mysql.connector.connect(
-        host="boepijlcqxhibaudjeck-mysql.services.clever-cloud.com",
-        port=3306,        # Railway uses a non-3306 port
-        user="ublerrfhpva5tzcq",
-        password="sNgAJyIWpiEg9c2dB2sX",
-        database="boepijlcqxhibaudjeck"
+        host=os.environ.get("DB_HOST", "localhost"),
+        user=os.environ.get("DB_USER", "root"),
+        password=os.environ.get("DB_PASSWORD", "8121"),
+        database=os.environ.get("DB_NAME", "intellimess"),
+        port=int(os.environ.get("DB_PORT", 3306)),
     )
 
 # ---------------- HOME ----------------
@@ -83,7 +92,7 @@ def student_dashboard():
         return redirect('/login')
 
     # ---- Meal reminder banner ----
-    now = datetime.now()
+    now = now_ist()
     today = now.date()
     user_id = session['user_id']
 
@@ -178,7 +187,7 @@ def menu():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
     meal_times = [("Breakfast","07:30"),("Lunch","11:45"),("Snacks","16:30"),("Dinner","19:30")]
-    now = datetime.now()
+    now = now_ist()
     today = now.strftime("%A")
     current_time = now.strftime("%H:%M")
     next_meals = []
@@ -249,7 +258,7 @@ def book():
             return "Invalid guest count. Must be 1–10."
         guest_food_type = request.form.get('guest_food_type', food_type)
 
-    now = datetime.now()
+    now = now_ist()
     today = now.date()
     tomorrow = today + timedelta(days=1)
     booking_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -299,7 +308,7 @@ def feedback():
     if 'user_id' not in session:
         return redirect('/login')
     user_id = session['user_id']
-    now = datetime.now()
+    now = now_ist()
     today = now.date()
     meal_times = {"Breakfast": 7, "Lunch": 12, "Snacks": 16, "Dinner": 19}
     conn = get_db_connection()
@@ -351,7 +360,7 @@ def submit_feedback():
         return redirect('/login')
     user_id = session['user_id']
     booking_id = request.form.get('booking_id')
-    feedback_date = datetime.now().date()
+    feedback_date = now_ist().date()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM feedback WHERE booking_id = %s", (booking_id,))
@@ -459,7 +468,7 @@ def polls():
     if 'user_id' not in session or session['role'] != 'student':
         return redirect('/login')
     user_id = session['user_id']
-    now = datetime.now()
+    now = now_ist()
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
 
@@ -618,7 +627,7 @@ def admin():
     bookings = cursor.fetchall() or []
 
     meal_schedule = [("Breakfast",7),("Lunch",12),("Snacks",16),("Dinner",19)]
-    now = datetime.now()
+    now = now_ist()
     today_date = now.date()
     next_meal = None
     for meal, hour in meal_schedule:
@@ -843,7 +852,7 @@ def download_report():
     # ── data collection ──
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    now = datetime.now()
+    now = now_ist()
     week_ago = now.date() - timedelta(days=7)
 
     cursor.execute("""
@@ -1323,14 +1332,14 @@ def achievements():
 
     # My rank
     cursor.execute("""
-        SELECT COUNT(*)+1 as rank FROM user_streaks us JOIN users u ON us.user_id=u.id
+        SELECT COUNT(*)+1 as `my_rank` FROM user_streaks us JOIN users u ON us.user_id=u.id
         WHERE u.role='student'
         AND (us.current_streak > (SELECT COALESCE(current_streak,0) FROM user_streaks WHERE user_id=%s)
         OR (us.current_streak = (SELECT COALESCE(current_streak,0) FROM user_streaks WHERE user_id=%s)
             AND us.total_feedbacks > (SELECT COALESCE(total_feedbacks,0) FROM user_streaks WHERE user_id=%s)))
     """, (user_id, user_id, user_id))
     rank_row = cursor.fetchone()
-    my_rank = rank_row['rank'] if rank_row else '—'
+    my_rank = rank_row['my_rank'] if rank_row else '—'
 
     # Build last-7-days heatmap data
     from datetime import date as dt_date, timedelta as dt_td
@@ -1512,7 +1521,7 @@ def admin_forecast():
 
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    now    = datetime.now()
+    now    = now_ist()
     today  = now.date()
     meals  = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
     MEAL_ENC = {m: i for i, m in enumerate(meals)}
