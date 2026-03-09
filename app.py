@@ -2331,14 +2331,15 @@ def mark_attendance():
     booking_id = request.form.get('booking_id')
     attended   = request.form.get('attended')   # '1' or '0'
     if attended not in ('1', '0'):
-        return redirect('/admin/attendance')
+        return {'ok': False}, 400
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE bookings SET attended=%s WHERE id=%s", (int(attended), booking_id))
     conn.commit()
     cursor.close(); conn.close()
-    return redirect('/admin/attendance')
+    from flask import jsonify
+    return jsonify({'ok': True}), 200
 
 
 # ---------------- EXPORT BOOKINGS ----------------

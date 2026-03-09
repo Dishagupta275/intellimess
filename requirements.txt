@@ -1,8 +1,7 @@
 flask
 mysql-connector-python
-reportlab
-matplotlib
-scikit-learn
-numpy
+apscheduler
+python-dotenv
 gunicorn
-APScheduler==3.11.2
+scikit-learn
+reportlab
