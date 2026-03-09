@@ -174,7 +174,7 @@ let secondsLeft  = 300;
 // ── Load QR ──────────────────────────────────────────────────────
 function loadQR() {
     // Add cache-busting timestamp so browser doesn't cache old QR
-    document.getElementById('qrImg').src = `/qr-code/${USER_ID}.svg?t=${Date.now()}`;
+    document.getElementById('qrImg').src = `/qr-code/${USER_ID}.png?t=${Date.now()}`;
     secondsLeft = 300;
     startCountdown();
 }

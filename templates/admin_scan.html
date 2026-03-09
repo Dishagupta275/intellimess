@@ -310,29 +310,53 @@ function stopScanner() {
     document.getElementById('startBtn').innerHTML = '<i class="fas fa-camera"></i> Start Scanning';
     document.getElementById('stopBtn').style.display   = 'none';
     if (animFrame) cancelAnimationFrame(animFrame);
+    if (scanInterval) clearInterval(scanInterval);
 }
 
+let scanInterval = null;
+
 function scanFrame() {
-    if (!scanning) return;
-    if (video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
-        canvas.width  = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+    // Use interval instead of rAF — gives jsQR time to process each frame
+    scanInterval = setInterval(() => {
+        if (!scanning) { clearInterval(scanInterval); return; }
+
+        if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) return;
+
+        // Only set canvas size when video dimensions change (not every frame)
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // attemptBoth handles dark-on-light AND light-on-dark QR codes
         const code = jsQR(imgData.data, imgData.width, imgData.height,
-                          { inversionAttempts: 'dontInvert' });
-        if (code && !cooldown) {
+                          { inversionAttempts: 'attemptBoth' });
+
+        if (code && code.data && !cooldown) {
             try {
-                const params = new URL(code.data).searchParams;
-                const token  = params.get('token');
+                // Handle both full URL and raw token formats
+                let token;
+                if (code.data.includes('token=')) {
+                    token = new URL(code.data).searchParams.get('token');
+                } else {
+                    token = code.data; // raw token fallback
+                }
                 if (token && token !== lastToken) {
                     lastToken = token;
                     processQR(token);
                 }
-            } catch(e) { /* not our QR */ }
+            } catch(e) {
+                // Not a URL — try as raw token
+                if (code.data && code.data !== lastToken && !cooldown) {
+                    lastToken = code.data;
+                    processQR(code.data);
+                }
+            }
         }
-    }
-    animFrame = requestAnimationFrame(scanFrame);
+    }, 250); // scan 4 times per second — fast enough, light enough
 }
 
 function processQR(token) {
