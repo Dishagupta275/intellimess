@@ -239,6 +239,25 @@
         <h3>Demand Forecast</h3>
         <p>Predict headcount for upcoming meals</p>
       </a>
+      <a href="/admin/attendance" class="action-card">
+        <i class="fas fa-user-check" style="color:#00897b;"></i>
+        <h3>Attendance</h3>
+        <p>Track who showed up for meals</p>
+      </a>
+      <a href="/admin/alerts" class="action-card">
+        <i class="fas fa-exclamation-triangle" style="color:#e53935;"></i>
+        <h3>Dish Alerts
+          {% if alert_count and alert_count > 0 %}
+          <span style="background:#e53935;color:#fff;border-radius:50%;padding:1px 6px;font-size:11px;margin-left:4px;">{{ alert_count }}</span>
+          {% endif %}
+        </h3>
+        <p>Low-rated &amp; declining quality dishes</p>
+      </a>
+      <a href="/admin/export/csv" class="action-card">
+        <i class="fas fa-file-csv" style="color:#388e3c;"></i>
+        <h3>Export CSV</h3>
+        <p>Download all bookings as CSV</p>
+      </a>
       <a href="/logout" class="action-card">
         <i class="fas fa-sign-out-alt" style="color:#f44336;"></i>
         <h3>Logout</h3>

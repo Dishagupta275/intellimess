@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Calendar – IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .cal-wrap { max-width: 1100px; margin: 28px auto; padding: 0 16px 60px; }
+        .cal-hdr  { color:#fff; margin-bottom:22px; }
+        .cal-hdr h1 { font-size:26px; font-weight:700; margin-bottom:4px; }
+        .cal-hdr p  { font-size:13px; opacity:.85; }
+
+        /* Meal tabs */
+        .meal-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+        .meal-tab {
+            padding:8px 20px; border-radius:30px; font-size:13px; font-weight:600;
+            cursor:pointer; border:2px solid transparent; transition:all .2s;
+            background:#fff; color:#666;
+        }
+        .meal-tab.active  { border-color:#4CAF50; color:#4CAF50; background:#f0faf0; }
+        .meal-tab:hover   { border-color:#4CAF50; }
+
+        /* Calendar grid */
+        .cal-grid {
+            display:grid;
+            grid-template-columns: 110px repeat(7, 1fr);
+            gap:0;
+            border-radius:16px;
+            overflow:hidden;
+            box-shadow:0 4px 20px rgba(0,0,0,.08);
+        }
+
+        /* Header row */
+        .cal-day-hdr {
+            background:#fff;
+            padding:14px 8px;
+            text-align:center;
+            font-size:13px;
+            font-weight:700;
+            color:#555;
+            border-bottom:2px solid #f0f0f0;
+            border-right:1px solid #f0f0f0;
+        }
+        .cal-day-hdr:last-child { border-right:none; }
+        .cal-day-hdr.today-col {
+            background: linear-gradient(135deg,#4CAF50,#388e3c);
+            color:#fff;
+        }
+        .cal-corner {
+            background:#f8f8f8;
+            border-bottom:2px solid #f0f0f0;
+            border-right:1px solid #f0f0f0;
+        }
+
+        /* Meal label column */
+        .cal-meal-lbl {
+            background:#fafafa;
+            padding:18px 12px;
+            display:flex;
+            flex-direction:column;
+            align-items:flex-start;
+            justify-content:center;
+            border-right:2px solid #e8e8e8;
+            border-bottom:1px solid #f0f0f0;
+        }
+        .cal-meal-lbl .m-icon { font-size:22px; margin-bottom:4px; }
+        .cal-meal-lbl .m-name { font-size:12px; font-weight:700; color:#555; }
+
+        /* Cells */
+        .cal-cell {
+            background:#fff;
+            padding:12px 10px;
+            border-right:1px solid #f5f5f5;
+            border-bottom:1px solid #f5f5f5;
+            min-height:90px;
+            transition:background .2s;
+        }
+        .cal-cell:last-child { border-right:none; }
+        .cal-cell.today-col { background:#f0faf0; }
+        .cal-cell.empty { background:#fafafa; }
+
+        .dish-chip {
+            display:block;
+            font-size:12px;
+            color:#444;
+            padding:4px 8px;
+            margin-bottom:4px;
+            border-radius:7px;
+            background:#f5f5f5;
+            line-height:1.4;
+        }
+        .dish-chip.poll-winner {
+            background:#fff8e1;
+            color:#e65100;
+            font-weight:600;
+        }
+        .no-dishes {
+            font-size:11px;
+            color:#ccc;
+            font-style:italic;
+        }
+
+        /* Legend */
+        .legend { display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+        .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:#666; }
+        .legend-dot { width:12px; height:12px; border-radius:3px; }
+
+        .back-link { color:#fff; text-decoration:none; font-size:14px;
+                     font-weight:500; display:inline-flex; align-items:center; gap:7px; margin-top:18px; }
+        .back-link:hover { opacity:.8; }
+
+        @media (max-width:700px) {
+            .cal-grid { grid-template-columns: 80px repeat(7, 1fr); font-size:11px; }
+            .cal-cell { padding:8px 6px; min-height:70px; }
+            .dish-chip { font-size:10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand">
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+            <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+            <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="cal-wrap">
+        <div class="cal-hdr">
+            <h1><i class="fas fa-calendar-week"></i> Weekly Meal Calendar</h1>
+            <p>Full week at a glance — today's column is highlighted in green</p>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot" style="background:#f0faf0;border:1.5px solid #4CAF50;"></div>
+                Today
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background:#fff8e1;"></div>
+                Poll Winner ⭐
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background:#f5f5f5;"></div>
+                Regular dish
+            </div>
+        </div>
+
+        <div class="cal-grid">
+            <!-- Corner -->
+            <div class="cal-corner"></div>
+
+            <!-- Day headers -->
+            {% for day in days_order %}
+            <div class="cal-day-hdr {{ 'today-col' if day == today_name else '' }}">
+                {{ day[:3] }}
+                {% if day == today_name %}
+                <div style="font-size:10px;font-weight:400;margin-top:2px;opacity:.85;">Today</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <!-- Meal rows -->
+            {% for meal in meals_order %}
+                <!-- Meal label -->
+                <div class="cal-meal-lbl">
+                    <span class="m-icon">{{ meal_icons[meal] }}</span>
+                    <span class="m-name">{{ meal }}</span>
+                </div>
+
+                <!-- Day cells -->
+                {% for day in days_order %}
+                {% set dishes = calendar_data[day][meal] %}
+                <div class="cal-cell {{ 'today-col' if day == today_name else '' }} {{ 'empty' if not dishes else '' }}">
+                    {% if dishes %}
+                        {% for dish in dishes %}
+                            {% if '⭐' in dish %}
+                                <span class="dish-chip poll-winner">{{ dish }}</span>
+                            {% else %}
+                                <span class="dish-chip">{{ dish }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <span class="no-dishes">Not set</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+
+        <br>
+        <a href="/student" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+</body>
+</html>

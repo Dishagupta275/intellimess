@@ -6,6 +6,16 @@
     <title>Register - IntelliMess</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .error-box {
+            background:#fce4ec; border:1.5px solid #ef9a9a; color:#c62828;
+            border-radius:10px; padding:12px 16px; margin-bottom:16px;
+            font-size:13px; font-weight:500; display:flex; align-items:flex-start; gap:10px;
+        }
+        .field-hint {
+            font-size:11px; color:#aaa; margin-top:4px; padding-left:4px;
+        }
+    </style>
 </head>
 <body>
     <div class="auth-container">
@@ -18,29 +28,46 @@
                 <p>Create your student account</p>
             </div>
 
+            {% if error %}
+            <div class="error-box">
+                <i class="fas fa-exclamation-circle" style="margin-top:1px;flex-shrink:0;"></i>
+                <span>{{ error }}</span>
+            </div>
+            {% endif %}
+
             <form method="POST" action="/register">
                 <div class="form-group">
-                    <input type="text" name="username" id="username" placeholder=" " required>
+                    <input type="text" name="username" id="username" placeholder=" "
+                           value="{{ username or '' }}" required minlength="3">
                     <label for="username">Username</label>
                     <i class="fas fa-user input-icon"></i>
+                    <div class="field-hint">Min 3 characters</div>
                 </div>
 
                 <div class="form-group">
-                    <input type="password" name="password" id="password" placeholder=" " required>
+                    <input type="password" name="password" id="password" placeholder=" " required minlength="6">
                     <label for="password">Password</label>
                     <i class="fas fa-lock input-icon"></i>
+                    <div class="field-hint">Min 6 characters</div>
                 </div>
 
                 <div class="form-group">
-                    <input type="text" name="roll_no" id="roll_no" placeholder=" " required>
+                    <input type="text" name="roll_no" id="roll_no" placeholder=" "
+                           value="{{ roll_no or '' }}" required
+                           pattern="[A-Za-z0-9]{4,12}" title="4–12 alphanumeric characters">
                     <label for="roll_no">Roll Number</label>
                     <i class="fas fa-id-card input-icon"></i>
+                    <div class="field-hint">4–12 alphanumeric (e.g. 21CS045)</div>
                 </div>
 
                 <div class="form-group">
-                    <input type="text" name="phone_no" id="phone_no" placeholder=" " required>
+                    <input type="tel" name="phone_no" id="phone_no" placeholder=" "
+                           value="{{ phone_no or '' }}" required
+                           pattern="[\+\d\s\-\(\)]{10,15}"
+                           title="10-digit phone number">
                     <label for="phone_no">Phone Number</label>
                     <i class="fas fa-phone input-icon"></i>
+                    <div class="field-hint">10-digit Indian phone number</div>
                 </div>
 
                 <button type="submit" class="btn btn-primary">

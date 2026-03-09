@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .profile-wrap {
+            max-width: 680px;
+            margin: 36px auto;
+            padding: 0 20px 60px;
+        }
+        .profile-hdr {
+            color: #fff;
+            margin-bottom: 24px;
+        }
+        .profile-hdr h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .profile-hdr p {
+            font-size: 14px;
+            opacity: .85;
+        }
+
+        /* Avatar card */
+        .avatar-card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 32px 28px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.08);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .avatar-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4CAF50, #81C784);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: #fff;
+            font-weight: 700;
+            flex-shrink: 0;
+            box-shadow: 0 4px 14px rgba(76,175,80,.35);
+        }
+        .avatar-info h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 4px;
+        }
+        .avatar-info .roll-chip {
+            display: inline-block;
+            background: #f0faf0;
+            color: #388e3c;
+            border: 1px solid #c8e6c9;
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        .avatar-info .email-chip {
+            display: inline-block;
+            color: #888;
+            font-size: 13px;
+        }
+
+        /* Form cards */
+        .form-card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 4px 16px rgba(0,0,0,.07);
+            margin-bottom: 20px;
+        }
+        .form-card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+        .form-card-title i {
+            color: #4CAF50;
+        }
+
+        .pf-group {
+            margin-bottom: 18px;
+        }
+        .pf-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 7px;
+        }
+        .pf-group input {
+            width: 100%;
+            padding: 11px 14px;
+            border: 2px solid #e8e8e8;
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            transition: border-color .25s;
+            box-sizing: border-box;
+        }
+        .pf-group input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        .pf-group input[readonly] {
+            background: #fafafa;
+            color: #999;
+            cursor: not-allowed;
+        }
+        .pf-group .hint {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, #4CAF50, #388e3c);
+            color: #fff;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Poppins', sans-serif;
+            cursor: pointer;
+            transition: all .25s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(76,175,80,.35);
+        }
+
+        /* Flash messages */
+        .flash {
+            padding: 13px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .flash.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        .flash.error {
+            background: #fce4ec;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+
+        /* Email toggle */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        .toggle-row:last-child { border: none; }
+        .toggle-label {
+            font-size: 14px;
+            color: #444;
+            font-weight: 500;
+        }
+        .toggle-desc {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 2px;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 46px;
+            height: 26px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input { display: none; }
+        .slider {
+            position: absolute;
+            inset: 0;
+            background: #ddd;
+            border-radius: 26px;
+            cursor: pointer;
+            transition: .3s;
+        }
+        .slider:before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            left: 3px;
+            top: 3px;
+            transition: .3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,.2);
+        }
+        .toggle-switch input:checked + .slider { background: #4CAF50; }
+        .toggle-switch input:checked + .slider:before { transform: translateX(20px); }
+
+        .back-link {
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            opacity: .85;
+        }
+        .back-link:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand">
+            <i class="fas fa-utensils"></i><span>IntelliMess</span>
+        </a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/booking"><i class="fas fa-calendar-plus"></i> Book</a>
+            <a href="/menu"><i class="fas fa-list"></i> Menu</a>
+            <a href="/feedback"><i class="fas fa-comment-dots"></i> Feedback</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="profile-wrap">
+        <div class="profile-hdr">
+            <h1><i class="fas fa-user-circle"></i> My Profile</h1>
+            <p>Manage your account details and notification preferences</p>
+        </div>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">
+                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }}"></i>
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endwith %}
+
+        <!-- Avatar / Info card -->
+        <div class="avatar-card">
+            <div class="avatar-circle">{{ username[0].upper() }}</div>
+            <div class="avatar-info">
+                <h2>{{ username }}</h2>
+                <span class="roll-chip"><i class="fas fa-id-card"></i> {{ roll_no }}</span>
+                {% if email %}
+                <span class="email-chip"><i class="fas fa-envelope"></i> {{ email }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Update Phone -->
+        <div class="form-card">
+            <div class="form-card-title">
+                <i class="fas fa-phone"></i> Contact Details
+            </div>
+            <form method="POST" action="/profile/update-phone">
+                <div class="pf-group">
+                    <label>Username</label>
+                    <input type="text" value="{{ username }}" readonly>
+                </div>
+                <div class="pf-group">
+                    <label>Roll Number</label>
+                    <input type="text" value="{{ roll_no }}" readonly>
+                </div>
+                <div class="pf-group">
+                    <label>Phone Number</label>
+                    <input type="tel" name="phone_no" value="{{ phone_no }}" placeholder="Enter your phone number" maxlength="15">
+                </div>
+                <div class="pf-group">
+                    <label>Email Address <span style="color:#aaa;font-weight:400;">(used for booking reminders)</span></label>
+                    <input type="email" name="email" value="{{ email or '' }}" placeholder="yourname@gmail.com">
+                    <div class="hint"><i class="fas fa-info-circle"></i> Add your email to receive booking reminder notifications</div>
+                </div>
+                <button type="submit" class="btn-save">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </form>
+        </div>
+
+        <!-- Change Password -->
+        <div class="form-card">
+            <div class="form-card-title">
+                <i class="fas fa-lock"></i> Change Password
+            </div>
+            <form method="POST" action="/profile/update-password">
+                <div class="pf-group">
+                    <label>Current Password</label>
+                    <input type="password" name="current_password" placeholder="Enter current password" required>
+                </div>
+                <div class="pf-group">
+                    <label>New Password</label>
+                    <input type="password" name="new_password" placeholder="Enter new password" required minlength="6">
+                </div>
+                <div class="pf-group">
+                    <label>Confirm New Password</label>
+                    <input type="password" name="confirm_password" placeholder="Repeat new password" required>
+                </div>
+                <button type="submit" class="btn-save">
+                    <i class="fas fa-key"></i> Update Password
+                </button>
+            </form>
+        </div>
+
+        <!-- Notification Preferences -->
+        <div class="form-card">
+            <div class="form-card-title">
+                <i class="fas fa-bell"></i> Email Notification Preferences
+            </div>
+            {% if not email %}
+            <div class="flash" style="background:#fff8e1;color:#f57f17;border:1px solid #ffe082;margin-bottom:16px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                Add your email above to enable notifications
+            </div>
+            {% endif %}
+            <form method="POST" action="/profile/update-notifications">
+                <div class="toggle-row">
+                    <div>
+                        <div class="toggle-label">📅 Booking Reminders</div>
+                        <div class="toggle-desc">Get emailed 30 mins before a booking window closes</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" name="remind_booking"
+                               {% if notif_prefs.remind_booking %}checked{% endif %}
+                               {% if not email %}disabled{% endif %}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div style="margin-top:18px;">
+                    <button type="submit" class="btn-save" {% if not email %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
+                        <i class="fas fa-save"></i> Save Preferences
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <a href="/student" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+</body>
+</html>

@@ -1,8 +1,16 @@
-from flask import Flask, render_template, request, redirect, session, Response
+from flask import Flask, render_template, request, redirect, session, Response, flash, url_for
 import mysql.connector
 import os
+import csv
+import io
+import re
+import smtplib
+import atexit
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from datetime import timezone as _tz
+from apscheduler.schedulers.background import BackgroundScheduler
 _IST_OFFSET = _tz(timedelta(hours=5, minutes=30))
 
 def now_ist():
@@ -11,8 +19,110 @@ def now_ist():
 
 
 app = Flask(__name__)
-# Secret key — set INTELLIMESS_SECRET env var in production, falls back for local dev
 app.secret_key = os.environ.get("INTELLIMESS_SECRET", "intellimess_dev_secret_change_me")
+
+# ================================================================
+# ----------------  EMAIL CONFIG  --------------------------------
+# Fill in YOUR Gmail address and App Password below
+# ================================================================
+MAIL_SENDER      = os.environ.get("MAIL_SENDER", "")       # ← your Gmail
+MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail App Password
+MAIL_SENDER_NAME = "IntelliMess"
+
+def send_email(to_address, subject, html_body):
+    """Send HTML email via Gmail SMTP. Silently fails if not configured."""
+    if "yourgmail" in MAIL_SENDER:
+        return  # not configured yet
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"{MAIL_SENDER_NAME} <{MAIL_SENDER}>"
+        msg["To"]      = to_address
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(MAIL_SENDER, MAIL_PASSWORD)
+            server.sendmail(MAIL_SENDER, to_address, msg.as_string())
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")
+
+# ================================================================
+# ----------------  BOOKING REMINDER SCHEDULER  ------------------
+# Sends email 30 mins before each meal booking window closes
+# ================================================================
+MEAL_CLOSING_SCHED = [
+    ("Breakfast", 6,  0),
+    ("Lunch",     9,  0),
+    ("Snacks",    12, 0),
+    ("Dinner",    16, 30),
+]
+
+def send_booking_reminders():
+    now   = now_ist()
+    today = now.date()
+    try:
+        conn   = get_db_connection()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        for meal, close_h, close_m in MEAL_CLOSING_SCHED:
+            close_time   = now.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
+            remind_start = close_time - timedelta(minutes=35)
+            remind_end   = close_time - timedelta(minutes=25)
+            if not (remind_start <= now <= remind_end):
+                continue
+            cursor.execute("""
+                SELECT u.id, u.username, u.email
+                FROM users u
+                WHERE u.role='student'
+                  AND u.email IS NOT NULL AND u.email != ''
+                  AND u.remind_booking = 1
+                  AND u.id NOT IN (
+                      SELECT b.user_id FROM bookings b
+                      WHERE b.meal=%s AND b.booking_date=%s)
+                  AND u.id NOT IN (
+                      SELECT rl.user_id FROM reminder_logs rl
+                      WHERE rl.meal=%s AND rl.reminder_date=%s)
+            """, (meal, today, meal, today))
+            for student in cursor.fetchall():
+                html = f"""
+                <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;
+                            border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.12);">
+                  <div style="background:linear-gradient(135deg,#4CAF50,#388e3c);padding:26px 28px;">
+                    <h2 style="color:#fff;margin:0;">⏰ Booking closes in 30 mins!</h2>
+                    <p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:14px;">IntelliMess Reminder</p>
+                  </div>
+                  <div style="background:#fff;padding:26px 28px;">
+                    <p style="font-size:15px;color:#333;">Hi <b>{student['username']}</b>,</p>
+                    <p style="font-size:14px;color:#444;line-height:1.6;">
+                      Your <b>{meal}</b> booking window closes at
+                      <b>{close_h:02d}:{close_m:02d}</b> — you haven't booked yet!
+                    </p>
+                    <div style="text-align:center;margin:24px 0;">
+                      <a href="http://localhost:5000/booking"
+                         style="background:#4CAF50;color:#fff;text-decoration:none;
+                                padding:12px 30px;border-radius:10px;font-size:14px;font-weight:600;">
+                        🍽️ Book {meal} Now
+                      </a>
+                    </div>
+                    <p style="font-size:11px;color:#bbb;text-align:center;">
+                      <a href="http://localhost:5000/profile" style="color:#4CAF50;">Manage notification preferences</a>
+                    </p>
+                  </div>
+                </div>"""
+                send_email(student['email'],
+                           f"⏰ {meal} booking closes in 30 mins — IntelliMess", html)
+                log = conn.cursor()
+                log.execute(
+                    "INSERT IGNORE INTO reminder_logs (user_id, meal, reminder_date) VALUES (%s,%s,%s)",
+                    (student['id'], meal, today))
+                conn.commit(); log.close()
+                print(f"[REMINDER] Sent {meal} reminder → {student['email']}")
+        cursor.close(); conn.close()
+    except Exception as e:
+        print(f"[SCHEDULER ERROR] {e}")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_booking_reminders, 'interval', minutes=5)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
 
 # ---------------- DATABASE ----------------
 def get_db_connection():
@@ -36,19 +146,55 @@ def register_page():
 
 @app.route('/register', methods=['POST'])
 def register():
-    username = request.form['username']
-    password = request.form['password']
-    roll_no = request.form['roll_no']
-    phone_no = request.form['phone_no']
+    username = request.form['username'].strip()
+    password = request.form['password'].strip()
+    roll_no  = request.form['roll_no'].strip().upper()
+    phone_no = request.form['phone_no'].strip()
+
+    # ── Input Validation ──────────────────────────────────────────
+    errors = []
+
+    if len(username) < 3:
+        errors.append("Username must be at least 3 characters.")
+
+    if len(password) < 6:
+        errors.append("Password must be at least 6 characters.")
+
+    # Roll No: letters + digits, 4–12 chars (e.g. 21CS045, B20EC12)
+    if not re.match(r'^[A-Z0-9]{4,12}$', roll_no):
+        errors.append("Roll number must be 4–12 alphanumeric characters (e.g. 21CS045).")
+
+    # Phone: exactly 10 digits, optionally prefixed with +91
+    phone_clean = re.sub(r'[\s\-\(\)]', '', phone_no)
+    if phone_clean.startswith('+91'):
+        phone_clean = phone_clean[3:]
+    if not re.match(r'^\d{10}$', phone_clean):
+        errors.append("Phone number must be exactly 10 digits.")
+
+    if errors:
+        error_msg = ' | '.join(errors)
+        return render_template("register.html", error=error_msg,
+                               username=username, roll_no=roll_no, phone_no=phone_no)
+
+    # Check duplicate username / roll_no
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM users WHERE username=%s OR roll_no=%s", (username, roll_no))
+    existing = cursor.fetchone()
+    if existing:
+        cursor.close(); conn.close()
+        return render_template("register.html",
+                               error="Username or roll number already registered.",
+                               username=username, roll_no=roll_no, phone_no=phone_no)
+
+    cursor.close()
+    ins = conn.cursor()
+    ins.execute("""
         INSERT INTO users (username, password, role, roll_no, phone_no)
         VALUES (%s, %s, 'student', %s, %s)
-    """, (username, password, roll_no, phone_no))
+    """, (username, password, roll_no, phone_clean))
     conn.commit()
-    cursor.close()
-    conn.close()
+    ins.close(); conn.close()
     return redirect('/login')
 
 # ---------------- LOGIN ----------------
@@ -226,6 +372,66 @@ def menu():
     conn.close()
     return render_template("menu.html", menu_data=menu_data)
 
+# ---------------- MEAL CALENDAR ----------------
+@app.route('/calendar')
+def meal_calendar():
+    if 'user_id' not in session:
+        return redirect('/login')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
+    meal_icons  = {'Breakfast':'☀️','Lunch':'🍛','Snacks':'🥪','Dinner':'🌙'}
+
+    # Build full weekly menu grid
+    calendar_data = {d: {m: [] for m in meals_order} for d in days_order}
+    cursor.execute("""
+        SELECT wm.day_of_week, wm.meal, d.dish_name
+        FROM weekly_menu wm
+        JOIN menu_items mi ON wm.id = mi.weekly_menu_id
+        JOIN dishes d ON mi.dish_id = d.id
+        ORDER BY wm.day_of_week, wm.meal
+    """)
+    for row in cursor.fetchall():
+        day, meal = row['day_of_week'], row['meal']
+        if day in calendar_data and meal in calendar_data[day]:
+            calendar_data[day][meal].append(row['dish_name'])
+
+    # Highlight today and add poll winners
+    now  = now_ist()
+    today_name = now.strftime('%A')
+    today_date = now.date()
+
+    for offset, day in enumerate(days_order):
+        # Calculate date for this weekday
+        dow_today = today_date.weekday()  # 0=Mon
+        dow_target = days_order.index(day)
+        diff = (dow_target - dow_today) % 7
+        cell_date = today_date + timedelta(days=diff)
+
+        for meal in meals_order:
+            cursor.execute("""
+                SELECT winner_dish FROM polls
+                WHERE poll_date=%s AND meal=%s AND status='closed'
+                AND winner_dish IS NOT NULL
+                ORDER BY id DESC LIMIT 1
+            """, (cell_date, meal))
+            pw = cursor.fetchone()
+            if pw:
+                calendar_data[day][meal].append(f"⭐ {pw['winner_dish']} (Poll Winner)")
+
+    cursor.close(); conn.close()
+
+    return render_template("calendar.html",
+        calendar_data=calendar_data,
+        days_order=days_order,
+        meals_order=meals_order,
+        meal_icons=meal_icons,
+        today_name=today_name,
+        username=session.get('username','')
+    )
+
 # ---------------- BOOKING ----------------
 @app.route('/booking')
 def booking_page():
@@ -298,6 +504,103 @@ def book():
     cursor.close()
     conn.close()
     return "<script>alert('Booking Successful!'); window.location.href='/student';</script>"
+
+# ---------------- MY BOOKINGS (student) ----------------
+@app.route('/my-bookings')
+def my_bookings():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id = session['user_id']
+    now   = now_ist()
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+
+    # Closing hours per meal (hour, minute)
+    MEAL_CLOSE_HM = {
+        "Breakfast": (6,  0),
+        "Lunch":     (9,  0),
+        "Snacks":    (12, 0),
+        "Dinner":    (16, 30),
+    }
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT id, meal, food_type, booking_date, guest_count, guest_food_type
+        FROM bookings
+        WHERE user_id = %s
+        ORDER BY booking_date DESC, FIELD(meal,'Breakfast','Lunch','Snacks','Dinner')
+    """, (user_id,))
+    bookings = cursor.fetchall() or []
+    cursor.close(); conn.close()
+
+    for b in bookings:
+        bdate = b['booking_date']
+        hm    = MEAL_CLOSE_HM.get(b['meal'])
+        if hm and bdate in (today, tomorrow):
+            # Build close_time anchored to the BOOKING date, not today
+            close_dt = datetime.combine(bdate, datetime.min.time()).replace(
+                hour=hm[0], minute=hm[1], second=0, microsecond=0)
+            b['can_cancel'] = now < close_dt
+        else:
+            b['can_cancel'] = False
+
+    return render_template("my_bookings.html",
+        bookings=bookings, username=session.get('username', ''))
+
+
+@app.route('/cancel-booking/<int:booking_id>', methods=['POST'])
+def cancel_booking(booking_id):
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect('/login')
+    user_id = session['user_id']
+    now      = now_ist()
+    today    = now.date()
+    tomorrow = today + timedelta(days=1)
+
+    MEAL_CLOSE_HM = {
+        "Breakfast": (6,  0),
+        "Lunch":     (9,  0),
+        "Snacks":    (12, 0),
+        "Dinner":    (16, 30),
+    }
+
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute(
+        "SELECT id, meal, booking_date, user_id FROM bookings WHERE id=%s",
+        (booking_id,)
+    )
+    booking = cursor.fetchone()
+
+    if not booking or booking['user_id'] != user_id:
+        cursor.close(); conn.close()
+        flash("Booking not found.", "error")
+        return redirect('/my-bookings')
+
+    bdate = booking['booking_date']
+    hm    = MEAL_CLOSE_HM.get(booking['meal'])
+
+    if bdate not in (today, tomorrow) or not hm:
+        cursor.close(); conn.close()
+        flash("Cancellation window has closed for this booking.", "error")
+        return redirect('/my-bookings')
+
+    close_dt = datetime.combine(bdate, datetime.min.time()).replace(
+        hour=hm[0], minute=hm[1], second=0, microsecond=0)
+
+    if now >= close_dt:
+        cursor.close(); conn.close()
+        flash("Cancellation window has closed for this booking.", "error")
+        return redirect('/my-bookings')
+
+    del_cur = conn.cursor()
+    del_cur.execute("DELETE FROM bookings WHERE id=%s AND user_id=%s", (booking_id, user_id))
+    conn.commit()
+    del_cur.close(); cursor.close(); conn.close()
+
+    flash(f"{booking['meal']} booking cancelled successfully.", "success")
+    return redirect('/my-bookings')
 
 # ---------------- FEEDBACK ----------------
 @app.route('/feedback')
@@ -682,8 +985,21 @@ def admin():
     """)
     top_streaks = cursor.fetchall() or []
 
-    cursor.execute("SELECT COUNT(*) as c FROM user_badges")
+    cursor.execute("""
+        SELECT COUNT(*) as c FROM user_badges
+    """)
     total_badges_awarded = cursor.fetchone()['c'] or 0
+
+    # ── Low-rated dish alert count ──
+    cursor.execute("""
+        SELECT COUNT(*) as c FROM (
+            SELECT d.dish_name FROM feedback f
+            JOIN dishes d ON f.dish_id = d.id
+            GROUP BY d.dish_name
+            HAVING AVG(f.rating) < 3.0 AND COUNT(f.id) >= 3
+        ) as low
+    """)
+    alert_count = cursor.fetchone()['c'] or 0
 
     cursor.execute("""
         SELECT badge_key, COUNT(*) as cnt FROM user_badges
@@ -726,6 +1042,7 @@ def admin():
         active_streaks=active_streaks, top_streaks=top_streaks,
         total_badges_awarded=total_badges_awarded, top_badges=top_badges,
         comeback_dishes=comeback_dishes,
+        alert_count=alert_count,
     )
 
 
@@ -1860,6 +2177,213 @@ def admin_bookings():
     return render_template("admin_bookings.html", bookings=bookings)
 
 
+# ---------------- ATTENDANCE TRACKING ----------------
+@app.route('/admin/attendance')
+def admin_attendance():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    now   = now_ist()
+    today = now.date()
+
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    try:
+        cursor.execute("""
+            SELECT b.id, b.meal, b.booking_date, b.food_type,
+                   b.guest_count, b.attended,
+                   u.username, u.roll_no
+            FROM bookings b
+            JOIN users u ON b.user_id = u.id
+            WHERE b.booking_date = %s
+            ORDER BY FIELD(b.meal,'Breakfast','Lunch','Snacks','Dinner'), u.username
+        """, (today,))
+        bookings = cursor.fetchall() or []
+    except Exception:
+        cursor.close(); conn.close()
+        return """
+        <div style="font-family:sans-serif;max-width:620px;margin:60px auto;padding:30px;
+                    border:2px solid #ffcdd2;border-radius:14px;background:#fff8f8;">
+          <h2 style="color:#c62828;">⚠️ Migration Required</h2>
+          <p style="color:#555;">Run this on your <b>CleverCloud</b> database:</p>
+          <pre style="background:#f5f5f5;padding:16px;border-radius:8px;color:#333;font-size:14px;">ALTER TABLE bookings
+    ADD COLUMN attended TINYINT(1) DEFAULT NULL;</pre>
+          <p style="color:#888;font-size:13px;">Connect via:<br>
+          <code>mysql -h boepijlcqxhibaudjeck-mysql.services.clever-cloud.com -u ublerrfhpva5tzcq -p boepijlcqxhibaudjeck</code></p>
+          <a href="/admin" style="color:#4CAF50;">← Back to Dashboard</a>
+        </div>"""
+
+    try:
+        cursor.execute("""
+            SELECT meal,
+                   COUNT(*) as total_booked,
+                   SUM(CASE WHEN attended = 1 THEN 1 ELSE 0 END) as attended_count,
+                   SUM(CASE WHEN attended = 0 THEN 1 ELSE 0 END) as absent_count,
+                   SUM(CASE WHEN attended IS NULL THEN 1 ELSE 0 END) as unmarked_count
+            FROM bookings
+            WHERE booking_date = %s
+            GROUP BY meal
+            ORDER BY FIELD(meal,'Breakfast','Lunch','Snacks','Dinner')
+        """, (today,))
+        meal_summary = cursor.fetchall() or []
+    except Exception:
+        meal_summary = []
+
+    for m in meal_summary:
+        marked = int(m['attended_count'] or 0) + int(m['absent_count'] or 0)
+        m['attendance_pct'] = round(int(m['attended_count'] or 0) / marked * 100) if marked else 0
+        m['no_show_pct']    = round(int(m['absent_count']  or 0) / marked * 100) if marked else 0
+
+    cursor.close(); conn.close()
+    return render_template("admin_attendance.html",
+        bookings=bookings, meal_summary=meal_summary, today=today)
+
+
+@app.route('/admin/attendance/mark', methods=['POST'])
+def mark_attendance():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    booking_id = request.form.get('booking_id')
+    attended   = request.form.get('attended')   # '1' or '0'
+    if attended not in ('1', '0'):
+        return redirect('/admin/attendance')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE bookings SET attended=%s WHERE id=%s", (int(attended), booking_id))
+    conn.commit()
+    cursor.close(); conn.close()
+    return redirect('/admin/attendance')
+
+
+# ---------------- EXPORT BOOKINGS ----------------
+@app.route('/admin/export/csv')
+def export_bookings_csv():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Try with attended column; fall back silently if column not yet added
+    try:
+        cursor.execute("""
+            SELECT u.username, u.roll_no, u.phone_no,
+                   b.meal, b.food_type,
+                   b.booking_date, b.booking_time,
+                   COALESCE(b.guest_count, 0)     as guest_count,
+                   COALESCE(b.guest_food_type,'') as guest_food_type,
+                   CASE WHEN b.attended=1 THEN 'Yes'
+                        WHEN b.attended=0 THEN 'No'
+                        ELSE 'Not Marked' END as attended
+            FROM bookings b
+            JOIN users u ON b.user_id = u.id
+            ORDER BY b.booking_date DESC, b.booking_time DESC
+        """)
+    except Exception:
+        cursor.execute("""
+            SELECT u.username, u.roll_no, u.phone_no,
+                   b.meal, b.food_type,
+                   b.booking_date, b.booking_time,
+                   COALESCE(b.guest_count, 0)     as guest_count,
+                   COALESCE(b.guest_food_type,'') as guest_food_type,
+                   'Not Marked' as attended
+            FROM bookings b
+            JOIN users u ON b.user_id = u.id
+            ORDER BY b.booking_date DESC, b.booking_time DESC
+        """)
+    rows = cursor.fetchall() or []
+    cursor.close(); conn.close()
+
+    output     = io.StringIO()
+    fieldnames = ['username','roll_no','phone_no','meal','food_type',
+                  'booking_date','booking_time','guest_count','guest_food_type','attended']
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for row in rows:
+        # MySQL TIME → Python timedelta; convert to HH:MM:SS string
+        bt = row.get('booking_time')
+        if hasattr(bt, 'total_seconds'):
+            total = int(bt.total_seconds())
+            h, rem = divmod(total, 3600)
+            m, s   = divmod(rem, 60)
+            row['booking_time'] = f"{h:02d}:{m:02d}:{s:02d}"
+        elif bt is None:
+            row['booking_time'] = ''
+
+        # booking_date → string
+        bd = row.get('booking_date')
+        if hasattr(bd, 'strftime'):
+            row['booking_date'] = bd.strftime('%Y-%m-%d')
+
+        writer.writerow({k: row.get(k, '') for k in fieldnames})
+
+    output.seek(0)
+    filename = f"IntelliMess_Bookings_{now_ist().strftime('%Y-%m-%d')}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+
+# ---------------- LOW-RATED DISH ALERTS ----------------
+@app.route('/admin/alerts')
+def admin_alerts():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Dishes with avg rating < 3 (minimum 3 reviews for significance)
+    cursor.execute("""
+        SELECT d.dish_name,
+               ROUND(AVG(f.rating), 2) as avg_rating,
+               COUNT(f.id) as review_count,
+               MIN(f.rating) as min_rating,
+               GROUP_CONCAT(f.comment SEPARATOR '||||') as comments
+        FROM feedback f
+        JOIN dishes d ON f.dish_id = d.id
+        GROUP BY d.dish_name
+        HAVING avg_rating < 3.0 AND review_count >= 3
+        ORDER BY avg_rating ASC
+    """)
+    low_rated = cursor.fetchall() or []
+    for dish in low_rated:
+        comments = [c.strip() for c in (dish['comments'] or '').split('||||') if c.strip()]
+        neg_comments = [c for c in comments if c][:3]
+        dish['sample_comments'] = neg_comments
+
+    # Dishes dropping in rating (last 7 days vs before)
+    cursor.execute("""
+        SELECT d.dish_name,
+               ROUND(AVG(CASE WHEN f.feedback_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                               THEN f.rating END), 2) as recent_avg,
+               ROUND(AVG(CASE WHEN f.feedback_date < DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                               THEN f.rating END), 2) as older_avg,
+               COUNT(f.id) as total_reviews
+        FROM feedback f
+        JOIN dishes d ON f.dish_id = d.id
+        GROUP BY d.dish_name
+        HAVING recent_avg IS NOT NULL AND older_avg IS NOT NULL
+           AND (older_avg - recent_avg) >= 0.8
+        ORDER BY (older_avg - recent_avg) DESC
+    """)
+    declining = cursor.fetchall() or []
+
+    # Overall alert count for admin dashboard badge
+    total_alerts = len(low_rated) + len(declining)
+
+    cursor.close(); conn.close()
+    return render_template("admin_alerts.html",
+        low_rated=low_rated,
+        declining=declining,
+        total_alerts=total_alerts
+    )
+
+
 @app.route('/admin/sentiment')
 def admin_sentiment():
     if session.get('role') != 'admin':
@@ -1903,6 +2427,113 @@ def admin_heatmap():
         heatmap=heatmap, heatmap_max=heatmap_max,
         days_order=days_order, meals_order=meals_order,
         comeback_dishes=comeback_dishes)
+
+
+# ================================================================
+# ----------------  PROFILE  -------------------------------------
+# ================================================================
+
+@app.route('/profile')
+def profile():
+    if 'user_id' not in session or session.get('role') != 'student':
+        return redirect('/login')
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+
+    # Check if email / remind_booking columns exist
+    try:
+        cursor.execute(
+            "SELECT username, roll_no, phone_no, email, remind_booking FROM users WHERE id=%s",
+            (session['user_id'],))
+    except Exception:
+        cursor.execute(
+            "SELECT username, roll_no, phone_no FROM users WHERE id=%s",
+            (session['user_id'],))
+    user = cursor.fetchone()
+    cursor.close(); conn.close()
+
+    return render_template("profile.html",
+        username    = user['username'],
+        roll_no     = user['roll_no'],
+        phone_no    = user.get('phone_no') or '',
+        email       = user.get('email') or '',
+        notif_prefs = {"remind_booking": bool(user.get('remind_booking', 0))}
+    )
+
+
+@app.route('/profile/update-phone', methods=['POST'])
+def profile_update_phone():
+    if 'user_id' not in session or session.get('role') != 'student':
+        return redirect('/login')
+    phone_no = request.form.get('phone_no', '').strip()
+    email    = request.form.get('email', '').strip()
+
+    if phone_no and not re.match(r'^\+?\d[\d\s\-]{8,14}$', phone_no):
+        flash('Invalid phone number.', 'error')
+        return redirect('/profile')
+
+    conn   = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE users SET phone_no=%s, email=%s WHERE id=%s",
+            (phone_no or None, email or None, session['user_id']))
+        conn.commit()
+        flash('Contact details updated!', 'success')
+    except Exception:
+        flash('Could not save — make sure the email/phone columns exist (run migrations).', 'error')
+    cursor.close(); conn.close()
+    return redirect('/profile')
+
+
+@app.route('/profile/update-password', methods=['POST'])
+def profile_update_password():
+    if 'user_id' not in session or session.get('role') != 'student':
+        return redirect('/login')
+    current  = request.form.get('current_password', '')
+    new_pw   = request.form.get('new_password', '')
+    confirm  = request.form.get('confirm_password', '')
+
+    if new_pw != confirm:
+        flash('New passwords do not match.', 'error')
+        return redirect('/profile')
+    if len(new_pw) < 6:
+        flash('Password must be at least 6 characters.', 'error')
+        return redirect('/profile')
+
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT password FROM users WHERE id=%s", (session['user_id'],))
+    user = cursor.fetchone()
+    if not user or user['password'] != current:
+        cursor.close(); conn.close()
+        flash('Current password is incorrect.', 'error')
+        return redirect('/profile')
+
+    upd = conn.cursor()
+    upd.execute("UPDATE users SET password=%s WHERE id=%s", (new_pw, session['user_id']))
+    conn.commit()
+    upd.close(); cursor.close(); conn.close()
+    flash('Password changed successfully!', 'success')
+    return redirect('/profile')
+
+
+@app.route('/profile/update-notifications', methods=['POST'])
+def profile_update_notifications():
+    if 'user_id' not in session or session.get('role') != 'student':
+        return redirect('/login')
+    remind = 1 if request.form.get('remind_booking') else 0
+    conn   = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE users SET remind_booking=%s WHERE id=%s",
+                       (remind, session['user_id']))
+        conn.commit()
+        flash('Notification preferences saved!', 'success')
+    except Exception:
+        flash('Could not save — run migrations first.', 'error')
+    cursor.close(); conn.close()
+    return redirect('/profile')
 
 
 # ---------------- RUN ----------------

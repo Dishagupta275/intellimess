@@ -50,7 +50,11 @@
   <div class="page-wrap">
     <div class="page-hdr">
       <h1><i class="fas fa-list"></i> All Bookings</h1>
-      <p>{{ bookings|length }} total bookings on record</p>
+      <p>{{ bookings|length }} total bookings on record &nbsp;·&nbsp;
+         <a href="/admin/export/csv" style="color:#fff;font-weight:600;text-decoration:none;">
+           <i class="fas fa-file-csv"></i> Download CSV
+         </a>
+      </p>
     </div>
 
     <div class="s-card">

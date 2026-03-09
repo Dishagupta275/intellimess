@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance – IntelliMess Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .page-wrap  { max-width:1050px; margin:28px auto; padding:0 20px 60px; }
+        .page-hdr   { color:#fff; margin-bottom:22px; }
+        .page-hdr h1{ font-size:26px; font-weight:700; margin-bottom:4px; }
+        .page-hdr p { font-size:13px; opacity:.85; }
+
+        .s-card { background:#fff; border-radius:18px; padding:24px 26px;
+                  box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:20px; }
+        .s-title { font-size:15px; font-weight:700; color:#333; margin-bottom:16px;
+                   padding-bottom:10px; border-bottom:2px solid #f0f0f0;
+                   display:flex; align-items:center; gap:8px; }
+        .s-title i { color:#4CAF50; }
+
+        /* Summary cards */
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:20px; }
+        .sum-card { background:#fff; border-radius:14px; padding:18px 20px;
+                    box-shadow:0 2px 10px rgba(0,0,0,.07); border-left:4px solid #4CAF50; }
+        .sum-meal { font-size:13px; font-weight:700; color:#555; margin-bottom:8px; }
+        .sum-stat  { font-size:22px; font-weight:700; color:#222; }
+        .sum-sub   { font-size:12px; color:#aaa; margin-top:4px; }
+        .pct-bar   { height:6px; border-radius:999px; background:#f0f0f0; margin-top:10px; overflow:hidden; }
+        .pct-fill  { height:100%; border-radius:999px; background:linear-gradient(90deg,#4CAF50,#81c784); }
+        .pct-fill.red { background:linear-gradient(90deg,#ef5350,#e57373); }
+
+        /* Table */
+        table { width:100%; border-collapse:collapse; }
+        th { background:#f8f8f8; padding:10px 12px; text-align:left;
+             font-size:11px; font-weight:700; color:#888; text-transform:uppercase;
+             border-bottom:2px solid #f0f0f0; }
+        td { padding:12px 12px; border-bottom:1px solid #f5f5f5; font-size:13px; color:#444; vertical-align:middle; }
+        tr:last-child td { border:none; }
+
+        .meal-badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+        .meal-B { background:#fff3e0; color:#e65100; }
+        .meal-L { background:#e8f5e9; color:#2e7d32; }
+        .meal-S { background:#f3e5f5; color:#7b1fa2; }
+        .meal-D { background:#e3f2fd; color:#1565c0; }
+
+        .att-btn { padding:5px 12px; border-radius:8px; font-size:11px; font-weight:600;
+                   cursor:pointer; border:none; font-family:'Poppins',sans-serif; transition:all .2s; }
+        .att-present { background:#e8f5e9; color:#2e7d32; }
+        .att-present:hover { background:#2e7d32; color:#fff; }
+        .att-absent  { background:#fce4ec; color:#c62828; }
+        .att-absent:hover  { background:#c62828; color:#fff; }
+
+        .badge-present { background:#e8f5e9; color:#2e7d32; padding:4px 10px;
+                         border-radius:20px; font-size:11px; font-weight:600; }
+        .badge-absent  { background:#fce4ec; color:#c62828; padding:4px 10px;
+                         border-radius:20px; font-size:11px; font-weight:600; }
+        .badge-unmarked{ background:#f5f5f5; color:#aaa; padding:4px 10px;
+                         border-radius:20px; font-size:11px; }
+
+        .search-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+        .search-bar input, .search-bar select {
+            padding:9px 12px; border:2px solid #e0e0e0; border-radius:10px;
+            font-size:13px; font-family:'Poppins',sans-serif; background:#f9f9f9; }
+        .search-bar input { flex:1; min-width:180px; }
+        .search-bar input:focus, .search-bar select:focus { outline:none; border-color:#4CAF50; }
+
+        .back-link { color:#fff; text-decoration:none; font-size:14px;
+                     font-weight:500; display:inline-flex; align-items:center; gap:7px; }
+        .back-link:hover { opacity:.8; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+        <div class="nav-links">
+            <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
+            <a href="/admin/bookings"><i class="fas fa-list"></i> Bookings</a>
+            <a href="/admin/alerts"><i class="fas fa-exclamation-triangle"></i> Alerts</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="page-wrap">
+        <div class="page-hdr">
+            <h1><i class="fas fa-user-check"></i> Attendance Tracker</h1>
+            <p>Mark attendance for today's bookings — {{ today.strftime('%A, %d %B %Y') }}</p>
+        </div>
+
+        <!-- Per-meal summary -->
+        {% if meal_summary %}
+        <div class="summary-grid">
+            {% for m in meal_summary %}
+            <div class="sum-card">
+                <div class="sum-meal">
+                    {% if m.meal == 'Breakfast' %}☀️{% elif m.meal == 'Lunch' %}🍛{% elif m.meal == 'Snacks' %}🥪{% else %}🌙{% endif %}
+                    {{ m.meal }}
+                </div>
+                <div class="sum-stat">{{ m.attendance_pct }}% <span style="font-size:14px;color:#aaa;font-weight:400;">attended</span></div>
+                <div class="sum-sub">{{ m.attended_count or 0 }} present · {{ m.absent_count or 0 }} absent · {{ m.unmarked_count or 0 }} unmarked · {{ m.total_booked }} booked</div>
+                <div class="pct-bar">
+                    <div class="pct-fill" style="width:{{ m.attendance_pct }}%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Bookings table -->
+        <div class="s-card">
+            <div class="s-title"><i class="fas fa-list-check"></i> Booking Records — Mark Attendance</div>
+
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="🔍 Search student or roll no…" oninput="filterTable()">
+                <select id="mealFilter" onchange="filterTable()">
+                    <option value="">All Meals</option>
+                    <option>Breakfast</option><option>Lunch</option>
+                    <option>Snacks</option><option>Dinner</option>
+                </select>
+                <select id="attFilter" onchange="filterTable()">
+                    <option value="">All Status</option>
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                    <option value="unmarked">Not Marked</option>
+                </select>
+            </div>
+
+            {% if bookings %}
+            <div style="overflow-x:auto;">
+                <table id="attTable">
+                    <thead>
+                        <tr>
+                            <th>Student</th><th>Roll No</th>
+                            <th>Meal</th><th>Food</th><th>Guests</th>
+                            <th>Status</th><th>Mark</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for b in bookings %}
+                    <tr>
+                        <td><strong>{{ b.username }}</strong></td>
+                        <td style="color:#888;">{{ b.roll_no }}</td>
+                        <td><span class="meal-badge meal-{{ b.meal[0] }}">{{ b.meal }}</span></td>
+                        <td>{{ b.food_type }}</td>
+                        <td>{% if b.guest_count and b.guest_count > 0 %}
+                            <span style="font-size:11px;color:#1565c0;">+{{ b.guest_count }}</span>
+                            {% else %}—{% endif %}</td>
+                        <td>
+                            {% if b.attended == 1 %}
+                                <span class="badge-present">✅ Present</span>
+                            {% elif b.attended == 0 %}
+                                <span class="badge-absent">❌ Absent</span>
+                            {% else %}
+                                <span class="badge-unmarked">— Not marked</span>
+                            {% endif %}
+                        </td>
+                        <td style="display:flex;gap:6px;">
+                            <form method="POST" action="/admin/attendance/mark" style="display:inline;">
+                                <input type="hidden" name="booking_id" value="{{ b.id }}">
+                                <input type="hidden" name="attended" value="1">
+                                <button type="submit" class="att-btn att-present">✅ Present</button>
+                            </form>
+                            <form method="POST" action="/admin/attendance/mark" style="display:inline;">
+                                <input type="hidden" name="booking_id" value="{{ b.id }}">
+                                <input type="hidden" name="attended" value="0">
+                                <button type="submit" class="att-btn att-absent">❌ Absent</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="text-align:center;color:#bbb;padding:30px;">No bookings for today yet.</p>
+            {% endif %}
+        </div>
+
+        <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+    </div>
+</div>
+<script>
+function filterTable() {
+    const q    = document.getElementById('searchInput').value.toLowerCase();
+    const meal = document.getElementById('mealFilter').value.toLowerCase();
+    const att  = document.getElementById('attFilter').value.toLowerCase();
+    document.querySelectorAll('#attTable tbody tr').forEach(row => {
+        const text   = row.innerText.toLowerCase();
+        const mMatch = !meal || text.includes(meal);
+        const qMatch = !q    || text.includes(q);
+        let aMatch   = true;
+        if (att === 'present')  aMatch = text.includes('present');
+        if (att === 'absent')   aMatch = text.includes('absent') && !text.includes('not marked');
+        if (att === 'unmarked') aMatch = text.includes('not marked');
+        row.style.display = (mMatch && qMatch && aMatch) ? '' : 'none';
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dish Alerts – IntelliMess Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .page-wrap  { max-width:900px; margin:28px auto; padding:0 20px 60px; }
+        .page-hdr   { color:#fff; margin-bottom:22px; }
+        .page-hdr h1{ font-size:26px; font-weight:700; margin-bottom:4px; }
+        .page-hdr p { font-size:13px; opacity:.85; }
+
+        .s-card { background:#fff; border-radius:18px; padding:24px 26px;
+                  box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:20px; }
+        .s-title { font-size:15px; font-weight:700; color:#333; margin-bottom:16px;
+                   padding-bottom:10px; border-bottom:2px solid #f0f0f0;
+                   display:flex; align-items:center; gap:8px; }
+        .s-title i { color:#e53935; }
+
+        /* Alert banner */
+        .alert-banner {
+            padding:16px 20px; border-radius:14px; margin-bottom:20px;
+            display:flex; align-items:center; gap:14px; font-size:14px; font-weight:500;
+        }
+        .alert-banner.red  { background:#fce4ec; border:1.5px solid #ef9a9a; color:#b71c1c; }
+        .alert-banner.zero { background:#e8f5e9; border:1.5px solid #a5d6a7; color:#1b5e20; }
+
+        /* Dish alert cards */
+        .dish-alert-card {
+            border:1.5px solid #ffcdd2; border-radius:14px; padding:18px 20px;
+            margin-bottom:14px; background:#fff;
+            border-left:5px solid #e53935;
+        }
+        .dish-alert-card.declining {
+            border-color:#fff3e0; border-left-color:#ff9800;
+        }
+        .dish-name-lbl { font-weight:700; font-size:15px; color:#222; margin-bottom:8px; }
+        .rating-badge {
+            display:inline-block; padding:4px 12px; border-radius:20px;
+            font-size:13px; font-weight:700;
+        }
+        .badge-red    { background:#fce4ec; color:#c62828; }
+        .badge-orange { background:#fff3e0; color:#e65100; }
+
+        .comment-list { margin-top:10px; }
+        .comment-chip {
+            display:block; background:#fafafa; border-radius:8px; padding:7px 12px;
+            font-size:12px; color:#666; margin-bottom:5px; border-left:3px solid #ef9a9a;
+            font-style:italic;
+        }
+
+        .stats-row { display:flex; gap:16px; flex-wrap:wrap; margin:10px 0; }
+        .stat-pill { background:#f5f5f5; padding:5px 12px; border-radius:20px;
+                     font-size:12px; color:#666; font-weight:500; }
+
+        .trend-arrow { font-size:13px; font-weight:600; }
+        .trend-down { color:#e53935; }
+        .trend-up   { color:#4CAF50; }
+
+        .empty-state { text-align:center; color:#bbb; padding:40px 20px; }
+        .empty-state i { font-size:44px; display:block; margin-bottom:12px; }
+
+        .back-link { color:#fff; text-decoration:none; font-size:14px;
+                     font-weight:500; display:inline-flex; align-items:center; gap:7px; }
+        .back-link:hover { opacity:.8; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+        <div class="nav-links">
+            <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/admin/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+            <a href="/admin/sentiment"><i class="fas fa-brain"></i> Sentiment</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="page-wrap">
+        <div class="page-hdr">
+            <h1><i class="fas fa-exclamation-triangle"></i> Dish Quality Alerts</h1>
+            <p>Dishes flagged for consistently low ratings or declining quality</p>
+        </div>
+
+        {% if total_alerts == 0 %}
+        <div class="alert-banner zero">
+            <i class="fas fa-check-circle" style="font-size:22px;"></i>
+            <div>
+                <strong>All dishes are performing well!</strong><br>
+                <span style="font-size:13px;">No dishes with consistently low ratings detected. Keep it up! 🎉</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert-banner red">
+            <i class="fas fa-exclamation-circle" style="font-size:22px;"></i>
+            <div>
+                <strong>{{ total_alerts }} alert{{ 's' if total_alerts != 1 else '' }} found</strong><br>
+                <span style="font-size:13px;">Review these dishes — students are consistently rating them poorly.</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Low-rated dishes -->
+        <div class="s-card">
+            <div class="s-title">
+                <i class="fas fa-thumbs-down"></i>
+                Low Rated Dishes
+                <span style="font-size:12px;color:#aaa;font-weight:400;margin-left:4px;">(avg &lt; 3 stars, min 3 reviews)</span>
+            </div>
+
+            {% if low_rated %}
+                {% for dish in low_rated %}
+                <div class="dish-alert-card">
+                    <div class="dish-name-lbl">
+                        {{ dish.dish_name }}
+                        <span class="rating-badge badge-red" style="margin-left:10px;">
+                            ⭐ {{ dish.avg_rating }} / 5
+                        </span>
+                    </div>
+                    <div class="stats-row">
+                        <span class="stat-pill">📊 {{ dish.review_count }} reviews</span>
+                        <span class="stat-pill">🔻 Lowest rating: {{ dish.min_rating }} ★</span>
+                    </div>
+                    {% if dish.sample_comments %}
+                    <div class="comment-list">
+                        <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Recent comments</div>
+                        {% for comment in dish.sample_comments %}
+                            {% if comment %}
+                            <span class="comment-chip">"{{ comment }}"</span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-star" style="color:#ffd600;"></i>
+                No dishes with consistently low ratings.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Declining dishes -->
+        <div class="s-card">
+            <div class="s-title">
+                <i class="fas fa-chart-line" style="color:#ff9800;"></i>
+                Declining Quality
+                <span style="font-size:12px;color:#aaa;font-weight:400;margin-left:4px;">(dropped 0.8+ stars in last 7 days)</span>
+            </div>
+
+            {% if declining %}
+                {% for dish in declining %}
+                <div class="dish-alert-card declining">
+                    <div class="dish-name-lbl">
+                        {{ dish.dish_name }}
+                        <span class="rating-badge badge-orange" style="margin-left:10px;">
+                            📉 Dropping
+                        </span>
+                    </div>
+                    <div class="stats-row">
+                        <span class="stat-pill">
+                            Before: <strong>{{ dish.older_avg }} ★</strong>
+                        </span>
+                        <span class="stat-pill trend-arrow trend-down">
+                            → Now: <strong>{{ dish.recent_avg }} ★</strong>
+                        </span>
+                        <span class="stat-pill">{{ dish.total_reviews }} total reviews</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-chart-line" style="color:#4CAF50;"></i>
+                No declining dishes detected this week.
+            </div>
+            {% endif %}
+        </div>
+
+        <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+    </div>
+</div>
+</body>
+</html>
