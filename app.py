@@ -2675,19 +2675,25 @@ def verify_qr_token(token):
     """Returns user_id if token is valid and not expired (±1 window grace = ~10 min)."""
     try:
         parts = token.split(":")
+        print(f"[VERIFY] parts={parts} count={len(parts)}")
         if len(parts) != 3:
+            print(f"[VERIFY] FAIL: expected 3 parts, got {len(parts)}")
             return None
         uid_str, win_str, sig = parts
         user_id = int(uid_str)
         window  = int(win_str)
         current = _time_window()
+        print(f"[VERIFY] token_window={window} current_window={current} diff={abs(current-window)}")
         if abs(current - window) > 1:
-            return None  # expired
+            print(f"[VERIFY] FAIL: token expired")
+            return None
         expected = make_qr_token(user_id, window).split(":")[2]
+        print(f"[VERIFY] sig={sig} expected={expected} match={sig==expected}")
         if hmac.compare_digest(sig, expected):
             return user_id
-    except Exception:
-        pass
+        print(f"[VERIFY] FAIL: signature mismatch")
+    except Exception as e:
+        print(f"[VERIFY] EXCEPTION: {e}")
     return None
 
 
@@ -2710,21 +2716,34 @@ def qr_code_png(user_id):
         return "Forbidden", 403
 
     token = make_qr_token(user_id)
-    url   = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
+    from urllib.parse import quote
+    url   = request.host_url.rstrip('/') + f"/admin/scan/mark?token={quote(token, safe='')}"
 
+    # ERROR_CORRECT_M = simpler QR = faster/easier to scan
+    # box_size=15 = bigger pixels = easier for camera to read
     qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=10,
-        border=4
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=15,
+        border=6
     )
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
+
+    # Resize to fixed 400x400 using PIL so it's always a consistent large size
+    try:
+        from PIL import Image as PilImage
+        pil_img = img.get_image() if hasattr(img, 'get_image') else img._img
+        pil_img = pil_img.resize((400, 400), PilImage.NEAREST)
+        buf = io.BytesIO()
+        pil_img.save(buf, format='PNG')
+    except Exception:
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+
     buf.seek(0)
     resp = Response(buf.read(), mimetype='image/png')
-    resp.headers['Cache-Control'] = 'no-store'  # always fresh — token changes every 5 min
+    resp.headers['Cache-Control'] = 'no-store'
     return resp
 
 
@@ -2746,14 +2765,17 @@ def admin_scan_page():
 
 @app.route('/admin/scan/mark')
 def admin_scan_mark():
-    """Called when QR is scanned — marks attendance and returns JSON.
-    Auth is the HMAC-signed token itself — no session required.
-    This allows the warden to scan from any device without logging in first.
+    """Called by warden scanner page via fetch() — requires admin session.
+    Students cannot mark their own attendance since this requires admin login.
+    The warden scanner page already requires admin login, so fetch() carries the session.
     """
+    if session.get('role') != 'admin':
+        return jsonify({'ok': False, 'error': 'Not authorised — warden must be logged in'}), 401
+
     token = request.args.get('token', '')
     meal  = request.args.get('meal', '')
 
-    # Auto-detect meal from time if not provided (e.g. external scanner)
+    # Auto-detect meal if not provided
     if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
         h = now_ist().hour
         if h < 7:    meal = 'Breakfast'
@@ -2761,16 +2783,12 @@ def admin_scan_mark():
         elif h < 15: meal = 'Snacks'
         else:        meal = 'Dinner'
 
+    print(f"[QR SCAN] token={token!r} meal={meal}")
     user_id = verify_qr_token(token)
+    print(f"[QR SCAN] verify result: user_id={user_id}")
 
     if not user_id:
-        # Friendly HTML response for external scanners opening in browser
-        if request.headers.get('Accept', '').startswith('text/html'):
-            return """<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
-                <h2>❌ Invalid or Expired QR</h2>
-                <p>Ask the student to open their QR page and refresh it.</p>
-            </body></html>""", 400
-        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh.'}), 400
+        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh their QR page.'}), 400
 
     today = now_ist().date()
     conn  = get_db_connection()
