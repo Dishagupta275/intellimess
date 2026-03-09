@@ -54,10 +54,29 @@ def send_email(to_address, subject, html_body):
         msg["From"]    = f"{MAIL_SENDER_NAME} <{sender}>"
         msg["To"]      = to_address
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-            server.login(sender, password)
-            server.sendmail(sender, to_address, msg.as_string())
-            print(f"[EMAIL] Sent to {to_address} — {subject}")
+        # Try port 587 (TLS) first — works on Render free tier
+        # Falls back to port 465 (SSL) if 587 fails
+        sent = False
+        for port, use_ssl in [(587, False), (465, True)]:
+            try:
+                if use_ssl:
+                    server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=10)
+                else:
+                    server = smtplib.SMTP("smtp.gmail.com", port, timeout=10)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                server.login(sender, password)
+                server.sendmail(sender, to_address, msg.as_string())
+                server.quit()
+                print(f"[EMAIL] Sent to {to_address} via port {port} — {subject}")
+                sent = True
+                break
+            except OSError as e:
+                print(f"[EMAIL] Port {port} unreachable: {e}")
+                continue
+        if not sent:
+            print("[EMAIL ERROR] All ports blocked — consider upgrading Render plan or using SendGrid")
     except smtplib.SMTPAuthenticationError:
         print("[EMAIL ERROR] Authentication failed — check MAIL_SENDER and MAIL_PASSWORD in Render env vars")
     except smtplib.SMTPException as e:
@@ -2716,31 +2735,21 @@ def qr_code_png(user_id):
         return "Forbidden", 403
 
     token = make_qr_token(user_id)
-    from urllib.parse import quote
-    url   = request.host_url.rstrip('/') + f"/admin/scan/mark?token={quote(token, safe='')}"
+    # Plain token in URL — colons are safe in query string values
+    url = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
 
-    # ERROR_CORRECT_M = simpler QR = faster/easier to scan
-    # box_size=15 = bigger pixels = easier for camera to read
+    # ERROR_CORRECT_M = less dense QR = much easier for cameras to read
+    # box_size=10 = good size, no PIL resize needed (resize distorts pixels)
     qr = qrcode.QRCode(
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=15,
-        border=6
+        box_size=10,
+        border=4
     )
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-
-    # Resize to fixed 400x400 using PIL so it's always a consistent large size
-    try:
-        from PIL import Image as PilImage
-        pil_img = img.get_image() if hasattr(img, 'get_image') else img._img
-        pil_img = pil_img.resize((400, 400), PilImage.NEAREST)
-        buf = io.BytesIO()
-        pil_img.save(buf, format='PNG')
-    except Exception:
-        buf = io.BytesIO()
-        img.save(buf, format='PNG')
-
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
     buf.seek(0)
     resp = Response(buf.read(), mimetype='image/png')
     resp.headers['Cache-Control'] = 'no-store'
@@ -2891,14 +2900,16 @@ Token for uid={uid}: {token}
 Token parts     : {token.split(":")}
 Verify result   : {verify} (should be {uid})
     </pre>
+    <h3>Live QR for uid={uid} — try scanning this with your phone camera:</h3>
+    <img src='/qr-code/{uid}.png' style='width:250px;height:250px;background:#fff;padding:10px;display:block;margin:10px 0;'>
     <h3>Test another user:</h3>
     <a href='/admin/test-qr?uid=1' style='color:#0f0'>uid=1</a> | 
     <a href='/admin/test-qr?uid=2' style='color:#0f0'>uid=2</a> | 
     <a href='/admin/test-qr?uid=3' style='color:#0f0'>uid=3</a>
     <br><br>
-    <h3>Test scan/mark directly:</h3>
-    <a href='/admin/scan/mark?token={token}&meal=Lunch' style='color:#0f0'>
-        Click to mark uid={uid} present for Lunch
+    <h3>Test scan/mark directly (click = same as scanning):</h3>
+    <a href='/admin/scan/mark?token={token}&meal=Dinner' style='color:#0f0;font-size:16px;'>
+        ▶ Click to mark uid={uid} present for Dinner
     </a>
     </body></html>
     """
