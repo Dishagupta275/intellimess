@@ -8,6 +8,8 @@ import hmac
 import hashlib
 import base64
 import smtplib
+import urllib.request as _urllib_req
+import json as _json
 import atexit
 import qrcode
 from qrcode.image.svg import SvgImage
@@ -42,11 +44,39 @@ MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail
 MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
-    """Send HTML email via Gmail SMTP. Silently skips if not configured."""
-    sender   = MAIL_SENDER.strip()
-    password = MAIL_PASSWORD.replace(" ", "").strip()  # handles "xxxx xxxx xxxx xxxx" format
+    """Send email via SendGrid API (works on Render free plan).
+    Falls back to Gmail SMTP if no SendGrid key configured."""
+    sender = MAIL_SENDER.strip()
+    sg_key = os.environ.get("SENDGRID_API_KEY", "").strip()
+
+    # ── SendGrid (preferred — works on Render free tier) ──────────
+    if sg_key:
+        try:
+            payload = _json.dumps({
+                "personalizations": [{"to": [{"email": to_address}]}],
+                "from": {"email": sender, "name": MAIL_SENDER_NAME},
+                "subject": subject,
+                "content": [{"type": "text/html", "value": html_body}]
+            }).encode("utf-8")
+            req = _urllib_req.Request(
+                "https://api.sendgrid.com/v3/mail/send",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {sg_key}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with _urllib_req.urlopen(req, timeout=10) as resp:
+                print(f"[EMAIL] SendGrid sent to {to_address} (status {resp.status}) — {subject}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] SendGrid failed: {e}")
+        return
+
+    # ── Gmail SMTP fallback ────────────────────────────────────────
+    password = MAIL_PASSWORD.replace(" ", "").strip()
     if not sender or not password:
-        print("[EMAIL] Not configured — set MAIL_SENDER and MAIL_PASSWORD env vars")
+        print("[EMAIL] Not configured — set SENDGRID_API_KEY or MAIL_SENDER+MAIL_PASSWORD")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -54,8 +84,6 @@ def send_email(to_address, subject, html_body):
         msg["From"]    = f"{MAIL_SENDER_NAME} <{sender}>"
         msg["To"]      = to_address
         msg.attach(MIMEText(html_body, "html"))
-        # Try port 587 (TLS) first — works on Render free tier
-        # Falls back to port 465 (SSL) if 587 fails
         sent = False
         for port, use_ssl in [(587, False), (465, True)]:
             try:
@@ -63,24 +91,17 @@ def send_email(to_address, subject, html_body):
                     server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=10)
                 else:
                     server = smtplib.SMTP("smtp.gmail.com", port, timeout=10)
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
+                    server.ehlo(); server.starttls(); server.ehlo()
                 server.login(sender, password)
                 server.sendmail(sender, to_address, msg.as_string())
                 server.quit()
-                print(f"[EMAIL] Sent to {to_address} via port {port} — {subject}")
+                print(f"[EMAIL] SMTP sent to {to_address} via port {port}")
                 sent = True
                 break
-            except OSError as e:
-                print(f"[EMAIL] Port {port} unreachable: {e}")
+            except OSError:
                 continue
         if not sent:
-            print("[EMAIL ERROR] All ports blocked — consider upgrading Render plan or using SendGrid")
-    except smtplib.SMTPAuthenticationError:
-        print("[EMAIL ERROR] Authentication failed — check MAIL_SENDER and MAIL_PASSWORD in Render env vars")
-    except smtplib.SMTPException as e:
-        print(f"[EMAIL ERROR] SMTP error: {e}")
+            print("[EMAIL ERROR] All SMTP ports blocked — add SENDGRID_API_KEY to Render env vars")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
 
