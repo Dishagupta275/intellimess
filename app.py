@@ -2857,6 +2857,77 @@ def admin_scan_mark():
     })
 
 
+# ---------------- DEBUG ROUTES (remove after testing) ----------------
+
+@app.route('/admin/test-qr')
+def test_qr_debug():
+    """Debug page — shows token generation and verification details."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    uid = request.args.get('uid', '1')
+    try:
+        uid = int(uid)
+    except:
+        uid = 1
+
+    import time as _time
+    window  = _time_window()
+    token   = make_qr_token(uid)
+    secret  = (os.environ.get("INTELLIMESS_SECRET") or "intellimess_dev_secret_change_me")
+    verify  = verify_qr_token(token)
+    now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    now_ist_str = now_ist().strftime('%Y-%m-%d %H:%M:%S IST')
+
+    return f"""
+    <html><body style='font-family:monospace;padding:30px;background:#111;color:#0f0;'>
+    <h2>🔍 QR Debug</h2>
+    <pre>
+Server UTC time : {now_utc}
+Server IST time : {now_ist_str}
+UNIX timestamp  : {int(datetime.utcnow().timestamp())}
+Current window  : {window}
+Secret loaded   : {"YES (" + secret[:4] + "...)" if secret else "NO — using fallback!"}
+Token for uid={uid}: {token}
+Token parts     : {token.split(":")}
+Verify result   : {verify} (should be {uid})
+    </pre>
+    <h3>Test another user:</h3>
+    <a href='/admin/test-qr?uid=1' style='color:#0f0'>uid=1</a> | 
+    <a href='/admin/test-qr?uid=2' style='color:#0f0'>uid=2</a> | 
+    <a href='/admin/test-qr?uid=3' style='color:#0f0'>uid=3</a>
+    <br><br>
+    <h3>Test scan/mark directly:</h3>
+    <a href='/admin/scan/mark?token={token}&meal=Lunch' style='color:#0f0'>
+        Click to mark uid={uid} present for Lunch
+    </a>
+    </body></html>
+    """
+
+@app.route('/admin/test-email')
+def test_email():
+    """Send a test email to verify SMTP config. Admin only."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    to = request.args.get('to', MAIL_SENDER)
+    if not to:
+        return "Set MAIL_SENDER env var first", 400
+    send_email(to, "✅ IntelliMess Email Test",
+        "<h2>Email is working!</h2><p>IntelliMess SMTP config is correct.</p>")
+    sender   = MAIL_SENDER.strip()
+    password = MAIL_PASSWORD.replace(" ", "").strip()
+    return f"""
+    <html><body style='font-family:monospace;padding:30px;background:#111;color:#0f0;'>
+    <h2>📧 Email Test</h2>
+    <pre>
+MAIL_SENDER   : {sender or "NOT SET"}
+MAIL_PASSWORD : {"SET (" + str(len(password)) + " chars)" if password else "NOT SET"}
+Sent test to  : {to}
+    </pre>
+    <p>Check Render logs for [EMAIL] or [EMAIL ERROR] lines.</p>
+    <p>Also check your inbox at {to}</p>
+    </body></html>
+    """
+
 # ---------------- RUN ----------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
