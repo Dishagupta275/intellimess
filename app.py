@@ -43,18 +43,25 @@ MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
     """Send HTML email via Gmail SMTP. Silently skips if not configured."""
-    if not MAIL_SENDER or not MAIL_PASSWORD:
-        print("[EMAIL] Not configured — set MAIL_SENDER and MAIL_PASSWORD in .env")
+    sender   = MAIL_SENDER.strip()
+    password = MAIL_PASSWORD.replace(" ", "").strip()  # handles "xxxx xxxx xxxx xxxx" format
+    if not sender or not password:
+        print("[EMAIL] Not configured — set MAIL_SENDER and MAIL_PASSWORD env vars")
         return
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"]    = f"{MAIL_SENDER_NAME} <{MAIL_SENDER}>"
+        msg["From"]    = f"{MAIL_SENDER_NAME} <{sender}>"
         msg["To"]      = to_address
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(MAIL_SENDER, MAIL_PASSWORD)
-            server.sendmail(MAIL_SENDER, to_address, msg.as_string())
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+            server.login(sender, password)
+            server.sendmail(sender, to_address, msg.as_string())
+            print(f"[EMAIL] Sent to {to_address} — {subject}")
+    except smtplib.SMTPAuthenticationError:
+        print("[EMAIL ERROR] Authentication failed — check MAIL_SENDER and MAIL_PASSWORD in Render env vars")
+    except smtplib.SMTPException as e:
+        print(f"[EMAIL ERROR] SMTP error: {e}")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
 
@@ -119,14 +126,14 @@ def send_booking_reminders():
                       <b>{close_h:02d}:{close_m:02d}</b> — you haven't booked yet!
                     </p>
                     <div style="text-align:center;margin:24px 0;">
-                      <a href="http://localhost:5000/booking"
+                      <a href="https://intellimess.onrender.com/booking"
                          style="background:#4CAF50;color:#fff;text-decoration:none;
                                 padding:12px 30px;border-radius:10px;font-size:14px;font-weight:600;">
                         🍽️ Book {meal} Now
                       </a>
                     </div>
                     <p style="font-size:11px;color:#bbb;text-align:center;">
-                      <a href="http://localhost:5000/profile" style="color:#4CAF50;">Manage notification preferences</a>
+                      <a href="https://intellimess.onrender.com/profile" style="color:#4CAF50;">Manage notification preferences</a>
                     </p>
                   </div>
                 </div>"""
@@ -191,7 +198,7 @@ def send_attendance_reminders():
                       📍 Head to the mess hall — your meal is ready soon.
                     </div>
                     <p style="font-size:11px;color:#bbb;text-align:center;">
-                      <a href="http://localhost:5000/profile" style="color:#FF7043;">Manage notification preferences</a>
+                      <a href="https://intellimess.onrender.com/profile" style="color:#FF7043;">Manage notification preferences</a>
                     </p>
                   </div>
                 </div>"""
@@ -2739,19 +2746,31 @@ def admin_scan_page():
 
 @app.route('/admin/scan/mark')
 def admin_scan_mark():
-    """Called when QR is scanned — marks attendance and returns JSON."""
-    if session.get('role') != 'admin':
-        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
-
+    """Called when QR is scanned — marks attendance and returns JSON.
+    Auth is the HMAC-signed token itself — no session required.
+    This allows the warden to scan from any device without logging in first.
+    """
     token = request.args.get('token', '')
     meal  = request.args.get('meal', '')
+
+    # Auto-detect meal from time if not provided (e.g. external scanner)
+    if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
+        h = now_ist().hour
+        if h < 7:    meal = 'Breakfast'
+        elif h < 11: meal = 'Lunch'
+        elif h < 15: meal = 'Snacks'
+        else:        meal = 'Dinner'
+
     user_id = verify_qr_token(token)
 
     if not user_id:
-        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh their QR page.'}), 400
-
-    if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
-        return jsonify({'ok': False, 'error': 'Invalid meal'}), 400
+        # Friendly HTML response for external scanners opening in browser
+        if request.headers.get('Accept', '').startswith('text/html'):
+            return """<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
+                <h2>❌ Invalid or Expired QR</h2>
+                <p>Ask the student to open their QR page and refresh it.</p>
+            </body></html>""", 400
+        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh.'}), 400
 
     today = now_ist().date()
     conn  = get_db_connection()
@@ -2766,14 +2785,26 @@ def admin_scan_mark():
     """, (user_id, meal, today))
     booking = cur.fetchone()
 
+    is_browser = request.headers.get('Accept', '').startswith('text/html')
+
     if not booking:
         cur.close(); conn.close()
+        if is_browser:
+            return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
+                <h2>⚠️ No Booking Found</h2>
+                <p>No {meal} booking found for this student today.</p>
+            </body></html>""", 404
         return jsonify({'ok': False, 'error': f'No {meal} booking found for this student today'}), 404
 
     # Check if already marked
     if booking.get('attended') is not None:
         already = 'Present' if booking['attended'] == 1 else 'Absent'
         cur.close(); conn.close()
+        if is_browser:
+            return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
+                <h2>⚠️ Already Marked</h2>
+                <p><b>{booking['username']}</b> already marked <b>{already}</b> for {meal}.</p>
+            </body></html>"""
         return jsonify({
             'ok': True,
             'already': True,
@@ -2788,6 +2819,13 @@ def admin_scan_mark():
     upd.execute("UPDATE bookings SET attended=1 WHERE id=%s", (booking['id'],))
     conn.commit()
     upd.close(); cur.close(); conn.close()
+
+    if is_browser:
+        return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
+            <h2>✅ Attendance Marked</h2>
+            <p><b>{booking['username']}</b> ({booking['roll_no']})<br>
+            {booking['food_type']} {meal} — Present</p>
+        </body></html>"""
 
     return jsonify({
         'ok': True,

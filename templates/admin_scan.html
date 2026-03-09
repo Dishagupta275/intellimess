@@ -252,8 +252,8 @@ async function startScanner() {
         stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: 'environment' }, // back camera on phones
-                width:  { ideal: 1280 },
-                height: { ideal: 720 }
+                width:  { ideal: 640 },
+                height: { ideal: 480 }
             },
             audio: false
         });
@@ -318,48 +318,47 @@ function stopScanner() {
 
 let scanInterval = null;
 
+// Dedicated small canvas for QR processing — 400px wide is plenty for jsQR
+const scanCanvas = document.createElement('canvas');
+const scanCtx    = scanCanvas.getContext('2d', { willReadFrequently: true });
+scanCanvas.width  = 400;
+scanCanvas.height = 400;
+
 function scanFrame() {
-    // Use interval instead of rAF — gives jsQR time to process each frame
     scanInterval = setInterval(() => {
         if (!scanning) { clearInterval(scanInterval); return; }
-
         if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) return;
 
-        // Only set canvas size when video dimensions change (not every frame)
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-            canvas.width  = video.videoWidth;
-            canvas.height = video.videoHeight;
-        }
+        // Scale down to 400×400 — jsQR is MUCH faster on smaller images
+        const scale = Math.min(400 / video.videoWidth, 400 / video.videoHeight);
+        const w = Math.floor(video.videoWidth  * scale);
+        const h = Math.floor(video.videoHeight * scale);
+        scanCtx.drawImage(video, 0, 0, w, h);
+        const imgData = scanCtx.getImageData(0, 0, w, h);
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        // attemptBoth handles dark-on-light AND light-on-dark QR codes
-        const code = jsQR(imgData.data, imgData.width, imgData.height,
-                          { inversionAttempts: 'attemptBoth' });
+        const code = jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
 
         if (code && code.data && !cooldown) {
+            console.log('[QR] Detected:', code.data);
             try {
-                // Handle both full URL and raw token formats
                 let token;
                 if (code.data.includes('token=')) {
                     token = new URL(code.data).searchParams.get('token');
                 } else {
-                    token = code.data; // raw token fallback
+                    token = code.data;
                 }
                 if (token && token !== lastToken) {
                     lastToken = token;
                     processQR(token);
                 }
             } catch(e) {
-                // Not a URL — try as raw token
-                if (code.data && code.data !== lastToken && !cooldown) {
+                if (code.data && code.data !== lastToken) {
                     lastToken = code.data;
                     processQR(code.data);
                 }
             }
         }
-    }, 250); // scan 4 times per second — fast enough, light enough
+    }, 300); // every 300ms — fast enough, not overloading mobile CPU
 }
 
 function processQR(token) {
