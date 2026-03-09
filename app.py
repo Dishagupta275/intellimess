@@ -11,6 +11,13 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from datetime import timezone as _tz
 from apscheduler.schedulers.background import BackgroundScheduler
+
+# Load .env file if python-dotenv is installed
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 _IST_OFFSET = _tz(timedelta(hours=5, minutes=30))
 
 def now_ist():
@@ -30,9 +37,10 @@ MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail
 MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
-    """Send HTML email via Gmail SMTP. Silently fails if not configured."""
-    if "yourgmail" in MAIL_SENDER:
-        return  # not configured yet
+    """Send HTML email via Gmail SMTP. Silently skips if not configured."""
+    if not MAIL_SENDER or not MAIL_PASSWORD:
+        print("[EMAIL] Not configured — set MAIL_SENDER and MAIL_PASSWORD in .env")
+        return
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
@@ -47,7 +55,9 @@ def send_email(to_address, subject, html_body):
 
 # ================================================================
 # ----------------  BOOKING REMINDER SCHEDULER  ------------------
-# Sends email 30 mins before each meal booking window closes
+# Two reminders per meal:
+#   1. To students who HAVEN'T booked yet (30 min before window closes)
+#   2. To students who HAVE booked (30 min before meal is served)
 # ================================================================
 MEAL_CLOSING_SCHED = [
     ("Breakfast", 6,  0),
@@ -56,7 +66,15 @@ MEAL_CLOSING_SCHED = [
     ("Dinner",    16, 30),
 ]
 
+MEAL_SERVE_SCHED = [
+    ("Breakfast", 8,  0),
+    ("Lunch",     13, 0),
+    ("Snacks",    16, 0),
+    ("Dinner",    20, 0),
+]
+
 def send_booking_reminders():
+    """Remind students who haven't booked yet — 30 min before window closes."""
     now   = now_ist()
     today = now.date()
     try:
@@ -79,14 +97,14 @@ def send_booking_reminders():
                       WHERE b.meal=%s AND b.booking_date=%s)
                   AND u.id NOT IN (
                       SELECT rl.user_id FROM reminder_logs rl
-                      WHERE rl.meal=%s AND rl.reminder_date=%s)
+                      WHERE rl.meal=%s AND rl.reminder_date=%s AND rl.reminder_type='booking')
             """, (meal, today, meal, today))
             for student in cursor.fetchall():
                 html = f"""
                 <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;
                             border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.12);">
                   <div style="background:linear-gradient(135deg,#4CAF50,#388e3c);padding:26px 28px;">
-                    <h2 style="color:#fff;margin:0;">⏰ Booking closes in 30 mins!</h2>
+                    <h2 style="color:#fff;margin:0;">⏰ Book {meal} before it closes!</h2>
                     <p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:14px;">IntelliMess Reminder</p>
                   </div>
                   <div style="background:#fff;padding:26px 28px;">
@@ -111,27 +129,94 @@ def send_booking_reminders():
                            f"⏰ {meal} booking closes in 30 mins — IntelliMess", html)
                 log = conn.cursor()
                 log.execute(
-                    "INSERT IGNORE INTO reminder_logs (user_id, meal, reminder_date) VALUES (%s,%s,%s)",
+                    "INSERT IGNORE INTO reminder_logs (user_id, meal, reminder_date, reminder_type) VALUES (%s,%s,%s,'booking')",
                     (student['id'], meal, today))
                 conn.commit(); log.close()
-                print(f"[REMINDER] Sent {meal} reminder → {student['email']}")
+                print(f"[REMINDER] Booking reminder sent → {student['email']} ({meal})")
         cursor.close(); conn.close()
     except Exception as e:
-        print(f"[SCHEDULER ERROR] {e}")
+        print(f"[SCHEDULER ERROR - booking] {e}")
+
+
+def send_attendance_reminders():
+    """Remind students who HAVE booked — 30 min before meal is served."""
+    now   = now_ist()
+    today = now.date()
+    try:
+        conn   = get_db_connection()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        for meal, serve_h, serve_m in MEAL_SERVE_SCHED:
+            serve_time   = now.replace(hour=serve_h, minute=serve_m, second=0, microsecond=0)
+            remind_start = serve_time - timedelta(minutes=35)
+            remind_end   = serve_time - timedelta(minutes=25)
+            if not (remind_start <= now <= remind_end):
+                continue
+            cursor.execute("""
+                SELECT u.id, u.username, u.email, b.food_type, b.guest_count
+                FROM users u
+                JOIN bookings b ON b.user_id = u.id
+                WHERE u.role='student'
+                  AND u.email IS NOT NULL AND u.email != ''
+                  AND u.remind_booking = 1
+                  AND b.meal=%s AND b.booking_date=%s
+                  AND u.id NOT IN (
+                      SELECT rl.user_id FROM reminder_logs rl
+                      WHERE rl.meal=%s AND rl.reminder_date=%s AND rl.reminder_type='attendance')
+            """, (meal, today, meal, today))
+            for student in cursor.fetchall():
+                guest_note = ""
+                if student.get('guest_count') and student['guest_count'] > 0:
+                    guest_note = f"<p style='font-size:13px;color:#888;'>You also have <b>{student['guest_count']} guest(s)</b> booked.</p>"
+                html = f"""
+                <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;
+                            border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.12);">
+                  <div style="background:linear-gradient(135deg,#FF7043,#e64a19);padding:26px 28px;">
+                    <h2 style="color:#fff;margin:0;">🍽️ {meal} is in 30 minutes!</h2>
+                    <p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:14px;">IntelliMess Meal Reminder</p>
+                  </div>
+                  <div style="background:#fff;padding:26px 28px;">
+                    <p style="font-size:15px;color:#333;">Hi <b>{student['username']}</b>,</p>
+                    <p style="font-size:14px;color:#444;line-height:1.6;">
+                      Your <b>{student['food_type']} {meal}</b> is being served at
+                      <b>{serve_h:02d}:{serve_m:02d}</b>. Don't forget to show up!
+                    </p>
+                    {guest_note}
+                    <div style="background:#fff8f0;border-left:4px solid #FF7043;
+                                border-radius:8px;padding:14px;margin:18px 0;font-size:13px;color:#555;">
+                      📍 Head to the mess hall — your meal is ready soon.
+                    </div>
+                    <p style="font-size:11px;color:#bbb;text-align:center;">
+                      <a href="http://localhost:5000/profile" style="color:#FF7043;">Manage notification preferences</a>
+                    </p>
+                  </div>
+                </div>"""
+                send_email(student['email'],
+                           f"🍽️ {meal} is in 30 mins — don't forget! | IntelliMess", html)
+                log = conn.cursor()
+                log.execute(
+                    "INSERT IGNORE INTO reminder_logs (user_id, meal, reminder_date, reminder_type) VALUES (%s,%s,%s,'attendance')",
+                    (student['id'], meal, today))
+                conn.commit(); log.close()
+                print(f"[REMINDER] Attendance reminder sent → {student['email']} ({meal})")
+        cursor.close(); conn.close()
+    except Exception as e:
+        print(f"[SCHEDULER ERROR - attendance] {e}")
+
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(send_booking_reminders, 'interval', minutes=5)
+scheduler.add_job(send_booking_reminders,    'interval', minutes=5)
+scheduler.add_job(send_attendance_reminders, 'interval', minutes=5)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
 # ---------------- DATABASE ----------------
 def get_db_connection():
     return mysql.connector.connect(
-        host="boepijlcqxhibaudjeck-mysql.services.clever-cloud.com",
-        user="ublerrfhpva5tzcq",
-        password="sNgAJyIWpiEg9c2dB2sX",
-        database="boepijlcqxhibaudjeck",
-        port=3306,
+        host     = os.environ.get("MYSQL_ADDON_HOST"),
+        user     = os.environ.get("MYSQL_ADDON_USER"),
+        password = os.environ.get("MYSQL_ADDON_PASSWORD"),
+        database = os.environ.get("MYSQL_ADDON_DB"),
+        port     = int(os.environ.get("MYSQL_ADDON_PORT", 3306)),
     )
 
 # ---------------- HOME ----------------
