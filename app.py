@@ -2630,12 +2630,33 @@ def profile_update_notifications():
 # ----------------  QR ATTENDANCE  -------------------------------
 # ================================================================
 
+# Meal serve times (IST hour) and valid window ±1.5 hrs
+MEAL_SERVE_HOURS = {
+    'Breakfast': 8,
+    'Lunch':     13,
+    'Snacks':    16,
+    'Dinner':    20,
+}
+MEAL_VALID_WINDOW_MINS = 90  # 1.5 hours either side of serve time
+
 def _time_window():
     """Returns current 5-minute window number."""
     return int(datetime.utcnow().timestamp() // 300)
 
+def current_meal_ist():
+    """Returns the meal currently being served based on IST time."""
+    h = now_ist().hour
+    m = now_ist().minute
+    mins = h * 60 + m
+    # Valid windows: serve_time ± 90 min
+    for meal, serve_h in MEAL_SERVE_HOURS.items():
+        serve_mins = serve_h * 60
+        if (serve_mins - MEAL_VALID_WINDOW_MINS) <= mins <= (serve_mins + MEAL_VALID_WINDOW_MINS):
+            return meal
+    return None  # no meal currently being served
+
 def make_qr_token(user_id, window=None):
-    """Generate a time-based tamper-proof token. Expires every 5 minutes."""
+    """Generate a simple time-based token. Rotates every 5 minutes."""
     if window is None:
         window = _time_window()
     secret = (os.environ.get("INTELLIMESS_SECRET") or "intellimess_dev_secret_change_me").encode()
@@ -2644,15 +2665,18 @@ def make_qr_token(user_id, window=None):
     return f"{user_id}:{window}:{sig}"
 
 def verify_qr_token(token):
-    """Returns user_id if token valid and not expired (allows 1 window grace = ~10 min)."""
+    """Returns user_id if token is valid and not expired (±1 window grace = ~10 min)."""
     try:
-        uid_str, win_str, sig = token.split(":", 2)
+        parts = token.split(":")
+        if len(parts) != 3:
+            return None
+        uid_str, win_str, sig = parts
         user_id = int(uid_str)
         window  = int(win_str)
         current = _time_window()
         if abs(current - window) > 1:
             return None  # expired
-        expected = make_qr_token(user_id, window).split(":", 2)[2]
+        expected = make_qr_token(user_id, window).split(":")[2]
         if hmac.compare_digest(sig, expected):
             return user_id
     except Exception:
@@ -2670,26 +2694,31 @@ def my_qr_page():
         user_id=session['user_id'])
 
 
-@app.route('/qr-code/<int:user_id>.svg')
-def qr_code_svg(user_id):
-    """Generate and serve the QR code as SVG — accessible to the student and admin."""
+@app.route('/qr-code/<int:user_id>.png')
+def qr_code_png(user_id):
+    """Generate and serve the QR code as PNG — jsQR needs bitmap, not SVG."""
     if 'user_id' not in session:
         return redirect('/login')
-    # Students can only get their own QR; admins can get any
     if session.get('role') == 'student' and session['user_id'] != user_id:
         return "Forbidden", 403
 
-    token  = make_qr_token(user_id)
-    url    = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
+    token = make_qr_token(user_id)
+    url   = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
 
-    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=2)
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=4
+    )
     qr.add_data(url)
     qr.make(fit=True)
-    img    = qr.make_image(image_factory=SvgImage)
-    buf    = io.BytesIO()
-    img.save(buf)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
     buf.seek(0)
-    return Response(buf.read(), mimetype='image/svg+xml')
+    resp = Response(buf.read(), mimetype='image/png')
+    resp.headers['Cache-Control'] = 'no-store'  # always fresh — token changes every 5 min
+    return resp
 
 
 @app.route('/admin/scan')
@@ -2719,7 +2748,7 @@ def admin_scan_mark():
     user_id = verify_qr_token(token)
 
     if not user_id:
-        return jsonify({'ok': False, 'error': 'Invalid QR code'}), 400
+        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh their QR page.'}), 400
 
     if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
         return jsonify({'ok': False, 'error': 'Invalid meal'}), 400

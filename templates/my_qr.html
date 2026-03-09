@@ -97,7 +97,10 @@
 <div class="dashboard-wrapper">
     <nav class="navbar">
         <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
-        <div class="nav-links">
+        <button class="hamburger" id="hamburger" onclick="toggleNav()" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
+        <div id="navLinks" class="nav-links">
             <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
             <a href="/my-bookings"><i class="fas fa-history"></i> My Bookings</a>
             <a href="/profile"><i class="fas fa-user-circle"></i> Profile</a>
@@ -140,14 +143,19 @@
                     <span class="info-val" id="validMeal">—</span>
                 </div>
                 <div class="info-row">
+                    <span class="info-label">Valid until</span>
+                    <span class="info-val" id="validUntil">—</span>
+                </div>
+                <div class="info-row">
                     <span class="info-label">Status</span>
-                    <span class="info-val" style="color:#4CAF50;">🟢 Active</span>
+                    <span class="info-val" id="mealStatus" style="color:#4CAF50;">🟢 Active</span>
                 </div>
             </div>
 
-            <div class="tip">
+            <div class="tip" id="qrTip">
                 ⚠️ <strong>Do not screenshot this QR.</strong> It refreshes every 5 minutes
-                and a saved screenshot will quickly become invalid. Show this page live to the warden.
+                and is only valid during the current meal window (±1.5 hrs of serve time).
+                Show this page live to the warden.
             </div>
         </div>
     </div>
@@ -211,10 +219,74 @@ function startCountdown() {
 }
 
 // ── Show current valid meal ───────────────────────────────────────
+// Meal serve times (IST) and window ±90 min
+const MEAL_SCHEDULE = [
+    { name: 'Breakfast', serve: 8  * 60 },
+    { name: 'Lunch',     serve: 13 * 60 },
+    { name: 'Snacks',    serve: 16 * 60 },
+    { name: 'Dinner',    serve: 20 * 60 },
+];
+const WINDOW_MINS = 90;
+
+function currentMealInfo() {
+    // Convert to IST (UTC+5:30)
+    const now   = new Date();
+    const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+    const ist   = new Date(istMs);
+    const mins  = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+
+    for (const m of MEAL_SCHEDULE) {
+        const start = m.serve - WINDOW_MINS;
+        const end   = m.serve + WINDOW_MINS;
+        if (mins >= start && mins <= end) {
+            const endTime = new Date(istMs);
+            endTime.setUTCHours(Math.floor(m.serve / 60) + Math.floor(WINDOW_MINS / 60));
+            endTime.setUTCMinutes((m.serve + WINDOW_MINS) % 60);
+            return {
+                meal: m.name,
+                active: true,
+                validUntil: endTime.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12: true })
+            };
+        }
+    }
+    // Find next meal
+    const next = MEAL_SCHEDULE.find(m => (m.serve - WINDOW_MINS) > mins);
+    if (next) {
+        const startH = Math.floor((next.serve - WINDOW_MINS) / 60);
+        const startM = (next.serve - WINDOW_MINS) % 60;
+        return {
+            meal: next.name,
+            active: false,
+            opensAt: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`
+        };
+    }
+    return { meal: 'Breakfast (tomorrow)', active: false, opensAt: '06:30' };
+}
+
 function updateValidMeal() {
-    const h = new Date().getHours();
-    let meal = h < 7 ? 'Breakfast' : h < 11 ? 'Lunch' : h < 15 ? 'Snacks' : 'Dinner';
-    document.getElementById('validMeal').textContent = meal + ' today';
+    const info = currentMealInfo();
+    const mealEl   = document.getElementById('validMeal');
+    const untilEl  = document.getElementById('validUntil');
+    const statusEl = document.getElementById('mealStatus');
+    const tipEl    = document.getElementById('qrTip');
+
+    mealEl.textContent = info.meal;
+
+    if (info.active) {
+        untilEl.textContent  = 'Until ' + info.validUntil;
+        statusEl.textContent = '🟢 Active — show to warden now';
+        statusEl.style.color = '#4CAF50';
+        tipEl.style.background = '#fff8e1';
+    } else {
+        untilEl.textContent  = 'Opens at ' + info.opensAt;
+        statusEl.textContent = '🔴 No meal window open';
+        statusEl.style.color = '#ef5350';
+        tipEl.innerHTML = '⏳ <strong>No meal is currently being served.</strong> Your QR will activate ' +
+                          (info.opensAt ? `at ${info.opensAt}` : 'for the next meal') +
+                          ' (30 min before serve time).';
+        tipEl.style.background = '#fce4ec';
+        tipEl.style.borderLeftColor = '#ef5350';
+    }
 }
 
 // ── Screenshot prevention ─────────────────────────────────────────
