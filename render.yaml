@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: intellimess
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: MYSQL_ADDON_HOST
+        value: boepijlcqxhibaudjeck-mysql.services.clever-cloud.com
+      - key: MYSQL_ADDON_DB
+        value: boepijlcqxhibaudjeck
+      - key: MYSQL_ADDON_USER
+        value: ublerrfhpva5tzcq
+      - key: MYSQL_ADDON_PORT
+        value: "3306"
+      - key: MYSQL_ADDON_PASSWORD
+        sync: false   # set this manually in Render dashboard
+      - key: INTELLIMESS_SECRET
+        sync: false   # set this manually in Render dashboard
+      - key: MAIL_SENDER
+        sync: false   # set this manually in Render dashboard
+      - key: MAIL_PASSWORD
+        sync: false   # set this manually in Render dashboard

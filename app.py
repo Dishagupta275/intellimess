@@ -1,11 +1,16 @@
-from flask import Flask, render_template, request, redirect, session, Response, flash, url_for
+from flask import Flask, render_template, request, redirect, session, Response, flash, url_for, jsonify
 import mysql.connector
 import os
 import csv
 import io
 import re
+import hmac
+import hashlib
+import base64
 import smtplib
 import atexit
+import qrcode
+from qrcode.image.svg import SvgImage
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -2331,15 +2336,14 @@ def mark_attendance():
     booking_id = request.form.get('booking_id')
     attended   = request.form.get('attended')   # '1' or '0'
     if attended not in ('1', '0'):
-        return {'ok': False}, 400
+        return redirect('/admin/attendance')
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE bookings SET attended=%s WHERE id=%s", (int(attended), booking_id))
     conn.commit()
     cursor.close(); conn.close()
-    from flask import jsonify
-    return jsonify({'ok': True}), 200
+    return redirect('/admin/attendance')
 
 
 # ---------------- EXPORT BOOKINGS ----------------
@@ -2620,6 +2624,152 @@ def profile_update_notifications():
         flash('Could not save — run migrations first.', 'error')
     cursor.close(); conn.close()
     return redirect('/profile')
+
+
+# ================================================================
+# ----------------  QR ATTENDANCE  -------------------------------
+# ================================================================
+
+def _time_window():
+    """Returns current 5-minute window number."""
+    return int(datetime.utcnow().timestamp() // 300)
+
+def make_qr_token(user_id, window=None):
+    """Generate a time-based tamper-proof token. Expires every 5 minutes."""
+    if window is None:
+        window = _time_window()
+    secret = (os.environ.get("INTELLIMESS_SECRET") or "intellimess_dev_secret_change_me").encode()
+    msg    = f"intellimess-{user_id}-{window}".encode()
+    sig    = hmac.new(secret, msg, hashlib.sha256).hexdigest()[:16]
+    return f"{user_id}:{window}:{sig}"
+
+def verify_qr_token(token):
+    """Returns user_id if token valid and not expired (allows 1 window grace = ~10 min)."""
+    try:
+        uid_str, win_str, sig = token.split(":", 2)
+        user_id = int(uid_str)
+        window  = int(win_str)
+        current = _time_window()
+        if abs(current - window) > 1:
+            return None  # expired
+        expected = make_qr_token(user_id, window).split(":", 2)[2]
+        if hmac.compare_digest(sig, expected):
+            return user_id
+    except Exception:
+        pass
+    return None
+
+
+@app.route('/my-qr')
+def my_qr_page():
+    """Student page showing their QR code."""
+    if 'user_id' not in session or session.get('role') != 'student':
+        return redirect('/login')
+    return render_template('my_qr.html',
+        username=session.get('username', ''),
+        user_id=session['user_id'])
+
+
+@app.route('/qr-code/<int:user_id>.svg')
+def qr_code_svg(user_id):
+    """Generate and serve the QR code as SVG — accessible to the student and admin."""
+    if 'user_id' not in session:
+        return redirect('/login')
+    # Students can only get their own QR; admins can get any
+    if session.get('role') == 'student' and session['user_id'] != user_id:
+        return "Forbidden", 403
+
+    token  = make_qr_token(user_id)
+    url    = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
+
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img    = qr.make_image(image_factory=SvgImage)
+    buf    = io.BytesIO()
+    img.save(buf)
+    buf.seek(0)
+    return Response(buf.read(), mimetype='image/svg+xml')
+
+
+@app.route('/admin/scan')
+def admin_scan_page():
+    """Warden's camera scan page."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    now  = now_ist()
+    # Auto-detect current meal based on time
+    h = now.hour
+    if h < 7:      current_meal = "Breakfast"
+    elif h < 11:   current_meal = "Lunch"
+    elif h < 15:   current_meal = "Snacks"
+    else:          current_meal = "Dinner"
+    return render_template('admin_scan.html', current_meal=current_meal,
+                           today=now.date())
+
+
+@app.route('/admin/scan/mark')
+def admin_scan_mark():
+    """Called when QR is scanned — marks attendance and returns JSON."""
+    if session.get('role') != 'admin':
+        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
+
+    token = request.args.get('token', '')
+    meal  = request.args.get('meal', '')
+    user_id = verify_qr_token(token)
+
+    if not user_id:
+        return jsonify({'ok': False, 'error': 'Invalid QR code'}), 400
+
+    if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
+        return jsonify({'ok': False, 'error': 'Invalid meal'}), 400
+
+    today = now_ist().date()
+    conn  = get_db_connection()
+    cur   = conn.cursor(dictionary=True, buffered=True)
+
+    # Check student has a booking for this meal today
+    cur.execute("""
+        SELECT b.id, b.food_type, b.guest_count, u.username, u.roll_no
+        FROM bookings b
+        JOIN users u ON b.user_id = u.id
+        WHERE b.user_id=%s AND b.meal=%s AND b.booking_date=%s
+    """, (user_id, meal, today))
+    booking = cur.fetchone()
+
+    if not booking:
+        cur.close(); conn.close()
+        return jsonify({'ok': False, 'error': f'No {meal} booking found for this student today'}), 404
+
+    # Check if already marked
+    if booking.get('attended') is not None:
+        already = 'Present' if booking['attended'] == 1 else 'Absent'
+        cur.close(); conn.close()
+        return jsonify({
+            'ok': True,
+            'already': True,
+            'username': booking['username'],
+            'roll_no': booking['roll_no'],
+            'food_type': booking['food_type'],
+            'status': already
+        })
+
+    # Mark present
+    upd = conn.cursor()
+    upd.execute("UPDATE bookings SET attended=1 WHERE id=%s", (booking['id'],))
+    conn.commit()
+    upd.close(); cur.close(); conn.close()
+
+    return jsonify({
+        'ok': True,
+        'already': False,
+        'username': booking['username'],
+        'roll_no':  booking['roll_no'],
+        'food_type': booking['food_type'],
+        'guest_count': booking.get('guest_count') or 0,
+        'meal': meal,
+        'status': 'Present'
+    })
 
 
 # ---------------- RUN ----------------

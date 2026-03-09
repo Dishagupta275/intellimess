@@ -121,9 +121,16 @@
 
     <div class="page-wrap">
         <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
-        <div class="page-hdr">
-            <h1><i class="fas fa-user-check"></i> Attendance Tracker</h1>
-            <p>{{ today.strftime('%A, %d %B %Y') }} &nbsp;·&nbsp; Mark who showed up today</p>
+        <div class="page-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h1><i class="fas fa-user-check"></i> Attendance Tracker</h1>
+                <p>{{ today.strftime('%A, %d %B %Y') }} &nbsp;·&nbsp; Mark who showed up today</p>
+            </div>
+            <a href="/admin/scan" style="background:#4CAF50;color:#fff;text-decoration:none;
+               padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;
+               display:inline-flex;align-items:center;gap:8px;margin-top:4px;">
+                <i class="fas fa-qrcode"></i> QR Scanner
+            </a>
         </div>
 
         {% if meal_summary %}

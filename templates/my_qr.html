@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My QR Code – IntelliMess</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .page-wrap { max-width:420px; margin:40px auto; padding:0 20px 60px; }
+        .page-hdr  { color:#fff; margin-bottom:24px; }
+        .page-hdr h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+        .page-hdr p  { font-size:13px; opacity:.85; }
+
+        .qr-card { background:#fff; border-radius:20px; padding:28px 24px;
+                   box-shadow:0 8px 30px rgba(0,0,0,.12); text-align:center; }
+        .qr-card h2 { font-size:18px; font-weight:700; color:#222; margin-bottom:4px; }
+        .qr-card .sub { font-size:13px; color:#aaa; margin-bottom:20px; }
+
+        /* Screenshot prevention */
+        .qr-wrapper {
+            display:inline-block;
+            position:relative;
+            padding:14px;
+            border-radius:14px;
+            background:#f9f9f9;
+            border:3px solid #e0e0e0;
+            margin-bottom:16px;
+            /* Disable selection/copy */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none; /* disables iOS long-press save */
+        }
+
+        /* Invisible overlay that breaks screenshot-then-scan
+           by adding a semi-transparent pattern on top of the QR */
+        .qr-wrapper::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 11px;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 8px,
+                rgba(255,255,255,0.04) 8px,
+                rgba(255,255,255,0.04) 9px
+            );
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #qrImg { width:200px; height:200px; display:block; position:relative; z-index:1; }
+
+        /* Expiry countdown */
+        .expiry-wrap { margin:10px 0 16px; }
+        .expiry-bar-bg { height:4px; background:#f0f0f0; border-radius:999px; overflow:hidden; margin-bottom:6px; }
+        .expiry-bar    { height:100%; border-radius:999px; background:linear-gradient(90deg,#4CAF50,#81c784);
+                         transition:width .5s linear; }
+        .expiry-text   { font-size:11px; color:#aaa; }
+        .expiry-text.warn { color:#FF9800; font-weight:600; }
+
+        .student-info { margin-top:16px; padding-top:16px; border-top:2px solid #f0f0f0; text-align:left; }
+        .info-row { display:flex; justify-content:space-between; padding:7px 0;
+                    font-size:13px; border-bottom:1px solid #f8f8f8; }
+        .info-row:last-child { border:none; }
+        .info-label { color:#aaa; }
+        .info-val   { color:#333; font-weight:600; }
+
+        .tip { background:#fff8e1; border-radius:12px; padding:12px 14px;
+               font-size:12px; color:#555; text-align:left; margin-top:16px;
+               border-left:4px solid #FFC107; line-height:1.6; }
+
+        .back-link { color:#fff; text-decoration:none; font-size:14px;
+                     font-weight:500; display:inline-flex; align-items:center;
+                     gap:7px; margin-bottom:14px; }
+        .back-link:hover { opacity:.8; }
+
+        /* Screenshot overlay — shown when user tries to screenshot */
+        .screenshot-overlay {
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
+            z-index:9999; align-items:center; justify-content:center; flex-direction:column;
+            color:#fff; text-align:center; padding:30px;
+        }
+        .screenshot-overlay.show { display:flex; }
+        .screenshot-overlay i { font-size:50px; color:#ef5350; margin-bottom:16px; }
+        .screenshot-overlay h2 { font-size:20px; margin-bottom:8px; }
+        .screenshot-overlay p  { font-size:13px; color:#aaa; max-width:280px; line-height:1.6; }
+        .screenshot-overlay button {
+            margin-top:20px; padding:12px 28px; border-radius:12px;
+            background:#4CAF50; color:#fff; border:none; font-size:14px;
+            font-weight:600; cursor:pointer; font-family:inherit; }
+    </style>
+</head>
+<body>
+<div class="dashboard-wrapper">
+    <nav class="navbar">
+        <a href="/student" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
+        <div class="nav-links">
+            <a href="/student"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="/my-bookings"><i class="fas fa-history"></i> My Bookings</a>
+            <a href="/profile"><i class="fas fa-user-circle"></i> Profile</a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="page-wrap">
+        <a href="/student" class="back-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
+        <div class="page-hdr">
+            <h1><i class="fas fa-qrcode"></i> My Mess QR Code</h1>
+            <p>Show this live on your phone — do not share screenshots</p>
+        </div>
+
+        <div class="qr-card">
+            <h2>{{ username }}</h2>
+            <p class="sub">Your personal attendance QR — refreshes every 5 minutes</p>
+
+            <div class="qr-wrapper" id="qrWrapper"
+                 oncontextmenu="return false"
+                 ondragstart="return false">
+                <img id="qrImg" src="" alt="QR Code" draggable="false">
+            </div>
+
+            <!-- Expiry countdown bar -->
+            <div class="expiry-wrap">
+                <div class="expiry-bar-bg">
+                    <div class="expiry-bar" id="expiryBar" style="width:100%;"></div>
+                </div>
+                <div class="expiry-text" id="expiryText">Refreshes in 5:00</div>
+            </div>
+
+            <div class="student-info">
+                <div class="info-row">
+                    <span class="info-label">Name</span>
+                    <span class="info-val">{{ username }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Valid for</span>
+                    <span class="info-val" id="validMeal">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="info-val" style="color:#4CAF50;">🟢 Active</span>
+                </div>
+            </div>
+
+            <div class="tip">
+                ⚠️ <strong>Do not screenshot this QR.</strong> It refreshes every 5 minutes
+                and a saved screenshot will quickly become invalid. Show this page live to the warden.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Screenshot warning overlay -->
+<div class="screenshot-overlay" id="screenshotOverlay">
+    <i class="fas fa-ban"></i>
+    <h2>Screenshots Not Allowed</h2>
+    <p>This QR refreshes every 5 minutes. A screenshot will become invalid quickly.<br><br>
+       Show this page live to the warden instead.</p>
+    <button onclick="document.getElementById('screenshotOverlay').classList.remove('show')">
+        Got it
+    </button>
+</div>
+
+<script>
+const USER_ID    = {{ user_id }};
+const REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+let refreshTimer = null;
+let countdownTimer = null;
+let secondsLeft  = 300;
+
+// ── Load QR ──────────────────────────────────────────────────────
+function loadQR() {
+    // Add cache-busting timestamp so browser doesn't cache old QR
+    document.getElementById('qrImg').src = `/qr-code/${USER_ID}.svg?t=${Date.now()}`;
+    secondsLeft = 300;
+    startCountdown();
+}
+
+// ── Countdown bar ─────────────────────────────────────────────────
+function startCountdown() {
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+        secondsLeft--;
+        const pct  = (secondsLeft / 300) * 100;
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = String(secondsLeft % 60).padStart(2, '0');
+
+        document.getElementById('expiryBar').style.width = pct + '%';
+        const txt = document.getElementById('expiryText');
+        txt.textContent = secondsLeft <= 30
+            ? `⚠️ Refreshing in ${secondsLeft}s…`
+            : `Refreshes in ${mins}:${secs}`;
+        txt.className = 'expiry-text' + (secondsLeft <= 30 ? ' warn' : '');
+
+        // Change bar colour as it gets low
+        document.getElementById('expiryBar').style.background =
+            secondsLeft <= 30
+            ? 'linear-gradient(90deg,#ef5350,#e57373)'
+            : secondsLeft <= 60
+            ? 'linear-gradient(90deg,#FF9800,#FFB74D)'
+            : 'linear-gradient(90deg,#4CAF50,#81c784)';
+
+        if (secondsLeft <= 0) {
+            clearInterval(countdownTimer);
+            loadQR(); // auto-refresh
+        }
+    }, 1000);
+}
+
+// ── Show current valid meal ───────────────────────────────────────
+function updateValidMeal() {
+    const h = new Date().getHours();
+    let meal = h < 7 ? 'Breakfast' : h < 11 ? 'Lunch' : h < 15 ? 'Snacks' : 'Dinner';
+    document.getElementById('validMeal').textContent = meal + ' today';
+}
+
+// ── Screenshot prevention ─────────────────────────────────────────
+
+// 1. Block right-click on QR
+document.getElementById('qrWrapper').addEventListener('contextmenu', e => e.preventDefault());
+
+// 2. Block keyboard shortcuts for screenshot / save
+document.addEventListener('keydown', e => {
+    // PrintScreen, Ctrl+S, Ctrl+P, Cmd+Shift+3/4 (Mac screenshots)
+    if (e.key === 'PrintScreen' ||
+        (e.ctrlKey && ['s','p'].includes(e.key.toLowerCase())) ||
+        (e.metaKey && e.shiftKey && ['3','4','5'].includes(e.key))) {
+        e.preventDefault();
+        document.getElementById('screenshotOverlay').classList.add('show');
+    }
+});
+
+// 3. Detect visibility change — if user switches app to screenshot, blur QR
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        document.getElementById('qrImg').style.filter = 'blur(20px)';
+    } else {
+        setTimeout(() => {
+            document.getElementById('qrImg').style.filter = 'none';
+        }, 500);
+    }
+});
+
+// 4. Disable drag
+document.getElementById('qrImg').addEventListener('dragstart', e => e.preventDefault());
+
+// 5. On iOS — prevent long-press save image
+document.getElementById('qrImg').addEventListener('touchstart', e => {
+    e.preventDefault(); // prevents long-press menu
+}, { passive: false });
+
+// ── Init ──────────────────────────────────────────────────────────
+loadQR();
+updateValidMeal();
+setInterval(updateValidMeal, 60000);
+</script>
+</body>
+</html>
