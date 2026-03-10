@@ -6,3 +6,5 @@ gunicorn
 scikit-learn
 reportlab
 qrcode[pil]
+matplotlib
+numpy
