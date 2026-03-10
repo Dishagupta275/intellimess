@@ -116,7 +116,129 @@ MAIL_PASSWORD=xxxx xxxx xxxx xxxx
 
 ### 3. Set Up Database
 
-Run the SQL in `migrations_final.sql` on your MySQL database to create all tables.
+Create your database and run the following SQL to create all tables:
+
+```sql
+-- Core users table
+CREATE TABLE users (
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    username       VARCHAR(80)  NOT NULL UNIQUE,
+    password       VARCHAR(200) NOT NULL,
+    role           VARCHAR(20)  NOT NULL DEFAULT 'student',
+    roll_no        VARCHAR(20)  UNIQUE,
+    phone_no       VARCHAR(20),
+    email          VARCHAR(120),
+    remind_booking TINYINT(1)   NOT NULL DEFAULT 1
+);
+
+-- Meal bookings
+CREATE TABLE bookings (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    user_id         INT          NOT NULL,
+    meal            VARCHAR(20)  NOT NULL,
+    food_type       VARCHAR(20)  NOT NULL,
+    booking_date    DATE         NOT NULL,
+    booking_time    TIME,
+    guest_count     INT          DEFAULT 0,
+    guest_food_type VARCHAR(20),
+    attended        TINYINT(1)   DEFAULT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Weekly menu
+CREATE TABLE weekly_menu (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    day_of_week VARCHAR(20) NOT NULL,
+    meal        VARCHAR(20) NOT NULL,
+    created_at  TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Menu items (dishes per slot)
+CREATE TABLE menu_items (
+    id       INT AUTO_INCREMENT PRIMARY KEY,
+    menu_id  INT NOT NULL,
+    dish_id  INT NOT NULL,
+    FOREIGN KEY (menu_id) REFERENCES weekly_menu(id) ON DELETE CASCADE
+);
+
+-- Dishes
+CREATE TABLE dishes (
+    id        INT AUTO_INCREMENT PRIMARY KEY,
+    dish_name VARCHAR(100) NOT NULL UNIQUE
+);
+
+-- Feedback & ratings
+CREATE TABLE feedback (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    user_id      INT NOT NULL,
+    dish_id      INT NOT NULL,
+    rating       INT,
+    comment      TEXT,
+    booking_date DATE,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+);
+
+-- Polls
+CREATE TABLE polls (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    question    VARCHAR(200) NOT NULL,
+    meal        VARCHAR(20),
+    day_of_week VARCHAR(20),
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE poll_options (
+    id      INT AUTO_INCREMENT PRIMARY KEY,
+    poll_id INT NOT NULL,
+    dish_id INT NOT NULL,
+    FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+);
+
+CREATE TABLE poll_votes (
+    id        INT AUTO_INCREMENT PRIMARY KEY,
+    poll_id   INT NOT NULL,
+    option_id INT NOT NULL,
+    user_id   INT NOT NULL,
+    voted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_vote (poll_id, user_id),
+    FOREIGN KEY (poll_id)   REFERENCES polls(id)        ON DELETE CASCADE,
+    FOREIGN KEY (option_id) REFERENCES poll_options(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id)   REFERENCES users(id)        ON DELETE CASCADE
+);
+
+-- Dish suggestions
+CREATE TABLE suggestions (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    user_id    INT  NOT NULL,
+    dish_name  VARCHAR(100) NOT NULL,
+    reason     TEXT,
+    upvotes    INT  DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE suggestion_votes (
+    user_id       INT NOT NULL,
+    suggestion_id INT NOT NULL,
+    PRIMARY KEY (user_id, suggestion_id),
+    FOREIGN KEY (user_id)       REFERENCES users(id)       ON DELETE CASCADE,
+    FOREIGN KEY (suggestion_id) REFERENCES suggestions(id) ON DELETE CASCADE
+);
+
+-- Email reminder logs (prevents duplicate sends)
+CREATE TABLE reminder_logs (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    user_id       INT         NOT NULL,
+    meal          VARCHAR(20) NOT NULL,
+    reminder_date DATE        NOT NULL,
+    reminder_type VARCHAR(20) NOT NULL DEFAULT 'booking',
+    sent_at       TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_reminder (user_id, meal, reminder_date, reminder_type),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
 
 ### 4. Run
 
