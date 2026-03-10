@@ -44,12 +44,44 @@ MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail
 MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
-    """Send email via SendGrid API (works on Render free plan).
-    Falls back to Gmail SMTP if no SendGrid key configured."""
-    sender = MAIL_SENDER.strip()
-    sg_key = os.environ.get("SENDGRID_API_KEY", "").strip()
+    """Send email via Resend API (works on Render free plan, 100/day free).
+    Falls back to SendGrid, then Gmail SMTP."""
+    sender   = MAIL_SENDER.strip()
+    rs_key   = os.environ.get("RESEND_API_KEY", "").strip()
+    sg_key   = os.environ.get("SENDGRID_API_KEY", "").strip()
 
-    # ── SendGrid (preferred — works on Render free tier) ──────────
+    # ── Resend (preferred) ─────────────────────────────────────────
+    if rs_key:
+        try:
+            # Use onboarding@resend.dev if sender not a verified domain
+            from_addr = f"{MAIL_SENDER_NAME} <{sender}>" if sender else f"{MAIL_SENDER_NAME} <onboarding@resend.dev>"
+            payload = _json.dumps({
+                "from":    from_addr,
+                "to":      [to_address],
+                "subject": subject,
+                "html":    html_body
+            }).encode("utf-8")
+            req = _urllib_req.Request(
+                "https://api.resend.com/emails",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {rs_key}",
+                    "Content-Type":  "application/json"
+                },
+                method="POST"
+            )
+            try:
+                with _urllib_req.urlopen(req, timeout=15) as resp:
+                    body = resp.read().decode()
+                    print(f"[EMAIL] Resend OK → {to_address} (status {resp.status}) id={body}")
+            except _urllib_req.HTTPError as e:
+                err_body = e.read().decode()
+                print(f"[EMAIL ERROR] Resend HTTP {e.code}: {err_body}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Resend exception: {e}")
+        return
+
+    # ── SendGrid fallback ──────────────────────────────────────────
     if sg_key:
         try:
             payload = _json.dumps({
@@ -63,7 +95,7 @@ def send_email(to_address, subject, html_body):
                 data=payload,
                 headers={
                     "Authorization": f"Bearer {sg_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type":  "application/json"
                 },
                 method="POST"
             )
@@ -73,10 +105,10 @@ def send_email(to_address, subject, html_body):
             print(f"[EMAIL ERROR] SendGrid failed: {e}")
         return
 
-    # ── Gmail SMTP fallback ────────────────────────────────────────
+    # ── Gmail SMTP last resort ─────────────────────────────────────
     password = MAIL_PASSWORD.replace(" ", "").strip()
     if not sender or not password:
-        print("[EMAIL] Not configured — set SENDGRID_API_KEY or MAIL_SENDER+MAIL_PASSWORD")
+        print("[EMAIL] Not configured — set RESEND_API_KEY in Render env vars")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -101,7 +133,7 @@ def send_email(to_address, subject, html_body):
             except OSError:
                 continue
         if not sent:
-            print("[EMAIL ERROR] All SMTP ports blocked — add SENDGRID_API_KEY to Render env vars")
+            print("[EMAIL ERROR] All methods failed — add RESEND_API_KEY to Render env vars")
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
 
@@ -2947,16 +2979,19 @@ def test_email():
         "<h2>Email is working!</h2><p>IntelliMess SMTP config is correct.</p>")
     sender   = MAIL_SENDER.strip()
     password = MAIL_PASSWORD.replace(" ", "").strip()
+    rs_key   = os.environ.get("RESEND_API_KEY","").strip()
+    sg_key   = os.environ.get("SENDGRID_API_KEY","").strip()
     return f"""
     <html><body style='font-family:monospace;padding:30px;background:#111;color:#0f0;'>
     <h2>📧 Email Test</h2>
     <pre>
-MAIL_SENDER   : {sender or "NOT SET"}
-MAIL_PASSWORD : {"SET (" + str(len(password)) + " chars)" if password else "NOT SET"}
-Sent test to  : {to}
+RESEND_API_KEY  : {"SET (" + rs_key[:6] + "...)" if rs_key else "NOT SET"}
+SENDGRID_API_KEY: {"SET" if sg_key else "NOT SET"}
+MAIL_SENDER     : {sender or "NOT SET"}
+MAIL_PASSWORD   : {"SET (" + str(len(password)) + " chars)" if password else "NOT SET"}
+Sent test to    : {to}
     </pre>
     <p>Check Render logs for [EMAIL] or [EMAIL ERROR] lines.</p>
-    <p>Also check your inbox at {to}</p>
     </body></html>
     """
 
