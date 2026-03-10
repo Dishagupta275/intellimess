@@ -12,98 +12,84 @@
         .page-hdr h1 { font-size:26px; font-weight:700; margin-bottom:4px; }
         .page-hdr p  { font-size:13px; opacity:.85; }
 
-        .summary-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+        /* Summary strip */
+        .summary-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
                          gap:12px; margin-bottom:22px; }
         .sum-card { background:#fff; border-radius:14px; padding:16px 18px;
                     box-shadow:0 2px 10px rgba(0,0,0,.07); cursor:pointer;
                     border:2px solid transparent; transition:all .2s; }
-        .sum-card.active { border-color:#4CAF50; box-shadow:0 4px 16px rgba(76,175,80,.2); }
+        .sum-card.active { border-color:#4CAF50; }
         .sum-card:hover  { transform:translateY(-2px); }
-        .sum-meal { font-size:12px; font-weight:700; color:#888; margin-bottom:6px; }
+        .sum-meal { font-size:11px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:6px; }
         .sum-stat { font-size:22px; font-weight:700; color:#222; }
-        .sum-sub  { font-size:11px; color:#bbb; margin-top:3px; }
+        .sum-sub  { font-size:11px; color:#bbb; margin-top:2px; }
         .pct-bar  { height:5px; border-radius:999px; background:#f0f0f0; margin-top:8px; overflow:hidden; }
-        .pct-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#4CAF50,#81c784);
-                    transition:width .4s ease; }
+        .pct-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#4CAF50,#81c784); transition:width .4s; }
 
+        /* Tabs */
         .meal-tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
         .meal-tab  { padding:8px 20px; border-radius:10px; font-size:13px; font-weight:600;
-                     cursor:pointer; border:2px solid #e0e0e0; background:#fff;
-                     color:#888; transition:all .2s; }
+                     cursor:pointer; border:2px solid #e0e0e0; background:#fff; color:#888; transition:all .2s; }
         .meal-tab.active { background:#4CAF50; color:#fff; border-color:#4CAF50; }
-        .meal-tab .tab-count { display:inline-block; margin-left:6px; background:rgba(0,0,0,.12);
-                               border-radius:20px; padding:1px 7px; font-size:10px; }
+        .tab-count { display:inline-block; margin-left:6px; background:rgba(0,0,0,.12);
+                     border-radius:20px; padding:1px 7px; font-size:10px; }
         .meal-tab.active .tab-count { background:rgba(255,255,255,.25); }
 
-        .s-card { background:#fff; border-radius:18px; padding:24px 26px;
-                  box-shadow:0 4px 16px rgba(0,0,0,.07); margin-bottom:18px; }
-        .card-hdr { display:flex; align-items:center; justify-content:space-between;
-                    flex-wrap:wrap; gap:12px; margin-bottom:18px;
-                    padding-bottom:14px; border-bottom:2px solid #f0f0f0; }
-        .card-title { font-size:15px; font-weight:700; color:#333;
-                      display:flex; align-items:center; gap:8px; }
-        .card-title i { color:#4CAF50; }
+        /* Main card */
+        .att-card { background:#fff; border-radius:18px; padding:24px 26px;
+                    box-shadow:0 4px 16px rgba(0,0,0,.07); }
 
-        .progress-wrap { display:flex; align-items:center; gap:10px; }
-        .progress-text { font-size:12px; color:#888; white-space:nowrap; }
-        .progress-bar  { width:120px; height:8px; border-radius:999px; background:#f0f0f0; overflow:hidden; }
-        .progress-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#4CAF50,#81c784);
-                         transition:width .3s ease; }
+        /* Toolbar */
+        .toolbar { display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+        .search-box { flex:1; min-width:200px; position:relative; }
+        .search-box input { width:100%; padding:10px 16px 10px 40px; border-radius:12px;
+                            border:2px solid #e0e0e0; font-size:14px; font-family:inherit;
+                            outline:none; transition:border .2s; }
+        .search-box input:focus { border-color:#4CAF50; }
+        .search-box i { position:absolute; left:13px; top:50%; transform:translateY(-50%);
+                        color:#bbb; font-size:14px; }
+        .progress-info { font-size:13px; color:#888; white-space:nowrap; }
+        .progress-info strong { color:#4CAF50; }
 
-        .bulk-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
-        .bulk-btn { padding:8px 16px; border-radius:10px; font-size:12px; font-weight:600;
-                    cursor:pointer; border:none; font-family:inherit; transition:all .2s; }
-        .bulk-present { background:#e8f5e9; color:#2e7d32; }
-        .bulk-present:hover { background:#2e7d32; color:#fff; }
-        .bulk-absent  { background:#fce4ec; color:#c62828; }
-        .bulk-absent:hover  { background:#c62828; color:#fff; }
-        .bulk-label { font-size:12px; color:#aaa; margin-left:4px; }
+        /* Student list */
+        .student-list { display:flex; flex-direction:column; gap:2px; }
+        .stu-row { display:flex; align-items:center; gap:12px; padding:12px 14px;
+                   border-radius:12px; transition:background .15s; }
+        .stu-row:hover { background:#f9f9f9; }
+        .stu-row.hidden { display:none; }
 
-        .search-bar input {
-            width:100%; padding:9px 14px; border:2px solid #e0e0e0; border-radius:10px;
-            font-size:13px; font-family:inherit; background:#f9f9f9;
-            margin-bottom:16px; box-sizing:border-box; }
-        .search-bar input:focus { outline:none; border-color:#4CAF50; }
+        .roll-badge { width:52px; font-size:11px; font-weight:700; color:#888;
+                      background:#f5f5f5; border-radius:8px; padding:4px 6px;
+                      text-align:center; flex-shrink:0; }
+        .stu-name  { flex:1; font-size:14px; font-weight:600; color:#333; }
+        .stu-meta  { font-size:11px; color:#aaa; margin-top:1px; }
+        .food-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; flex-shrink:0; }
+        .food-badge.veg     { background:#e8f5e9; color:#2e7d32; }
+        .food-badge.nonveg  { background:#fce4ec; color:#c62828; }
+        .guest-badge { font-size:10px; color:#FF9800; font-weight:600; flex-shrink:0; }
 
-        table { width:100%; border-collapse:collapse; }
-        th { background:#f8f8f8; padding:10px 12px; text-align:left;
-             font-size:11px; font-weight:700; color:#888; text-transform:uppercase;
-             border-bottom:2px solid #f0f0f0; }
-        td { padding:11px 12px; border-bottom:1px solid #f5f5f5;
-             font-size:13px; color:#444; vertical-align:middle; }
-        tr:last-child td { border:none; }
-        tr.marked-present { background:#f9fef9; }
-        tr.marked-absent  { background:#fff9f9; }
+        /* Tick buttons */
+        .tick-wrap { display:flex; gap:6px; flex-shrink:0; }
+        .tick-btn { width:38px; height:38px; border-radius:10px; border:2px solid #e0e0e0;
+                    background:#fff; cursor:pointer; font-size:16px; display:flex;
+                    align-items:center; justify-content:center; transition:all .15s; }
+        .tick-btn:hover { transform:scale(1.1); }
+        .tick-btn.present { background:#4CAF50; border-color:#4CAF50; color:#fff; }
+        .tick-btn.absent  { background:#ef5350; border-color:#ef5350; color:#fff; }
+        .tick-btn.present:hover { background:#388e3c; }
+        .tick-btn.absent:hover  { background:#c62828; }
 
-        .meal-badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
-        .meal-B { background:#fff3e0; color:#e65100; }
-        .meal-L { background:#e8f5e9; color:#2e7d32; }
-        .meal-S { background:#f3e5f5; color:#7b1fa2; }
-        .meal-D { background:#e3f2fd; color:#1565c0; }
+        /* Empty state */
+        .empty { text-align:center; padding:48px 20px; color:#ccc; }
+        .empty i { font-size:40px; display:block; margin-bottom:12px; }
 
-        .mark-wrap { display:flex; gap:6px; }
-        .att-btn { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600;
-                   cursor:pointer; border:2px solid transparent; font-family:inherit;
-                   transition:all .15s; background:#f5f5f5; color:#999; }
-        .att-btn.sel-present { background:#2e7d32; color:#fff; border-color:#2e7d32; }
-        .att-btn.sel-absent  { background:#c62828; color:#fff; border-color:#c62828; }
+        /* Mark all button */
+        .btn-mark-all { padding:9px 16px; border-radius:10px; font-size:12px; font-weight:700;
+                        cursor:pointer; border:none; font-family:inherit; background:#e8f5e9;
+                        color:#2e7d32; transition:all .2s; }
+        .btn-mark-all:hover { background:#c8e6c9; }
 
-        .saving-dot { display:inline-block; width:7px; height:7px; border-radius:50%;
-                      background:#4CAF50; margin-left:6px; opacity:0; transition:opacity .2s; }
-        .saving-dot.show { opacity:1; animation:pulse 1s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-
-        .status-badge { padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; }
-        .badge-present { background:#e8f5e9; color:#2e7d32; }
-        .badge-absent  { background:#fce4ec; color:#c62828; }
-        .badge-unmarked{ background:#f5f5f5; color:#bbb; }
-
-        .back-link { color:#fff; text-decoration:none; font-size:14px;
-                     font-weight:500; display:inline-flex; align-items:center; gap:7px;
-                     margin-bottom:12px; }
-        .back-link:hover { opacity:.8; }
-        .empty-state { text-align:center; padding:50px 20px; color:#bbb; }
-        .empty-state i { font-size:40px; margin-bottom:12px; display:block; }
+        .divider { border:none; border-top:1px solid #f0f0f0; margin:2px 0; }
     </style>
 </head>
 <body>
@@ -115,253 +101,184 @@
         </button>
         <div id="navLinks" class="nav-links">
             <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
-            <a href="/admin/menu"><i class="fas fa-calendar-week"></i> Menu</a>
-            <a href="/admin/bookings"><i class="fas fa-list"></i> Bookings</a>
-            <a href="/admin/alerts"><i class="fas fa-exclamation-triangle"></i> Alerts</a>
+            <a href="/admin/bookings"><i class="fas fa-book"></i> Bookings</a>
+            <a href="/admin/menu"><i class="fas fa-utensils"></i> Menu</a>
             <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
     </nav>
 
     <div class="page-wrap">
-        <a href="/admin" class="back-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
-        <div class="page-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-            <div>
-                <h1><i class="fas fa-user-check"></i> Attendance Tracker</h1>
-                <p>{{ today.strftime('%A, %d %B %Y') }} &nbsp;·&nbsp; Mark who showed up today</p>
-            </div>
-            <a href="/admin/scan" style="background:#4CAF50;color:#fff;text-decoration:none;
-               padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;
-               display:inline-flex;align-items:center;gap:8px;margin-top:4px;">
-                <i class="fas fa-qrcode"></i> QR Scanner
-            </a>
+        <div class="page-hdr">
+            <h1><i class="fas fa-clipboard-check"></i> Attendance</h1>
+            <p>{{ today.strftime('%A, %d %B %Y') }} — tap ✓ for present, ✗ for absent</p>
         </div>
 
-        {% if meal_summary %}
+        <!-- Meal summary cards -->
         <div class="summary-strip">
             {% for m in meal_summary %}
-            <div class="sum-card" onclick="switchTab('{{ m.meal }}')" id="sum-{{ m.meal }}">
-                <div class="sum-meal">
-                    {% if m.meal=='Breakfast' %}☀️{% elif m.meal=='Lunch' %}🍛{% elif m.meal=='Snacks' %}🥪{% else %}🌙{% endif %}
-                    {{ m.meal }}
-                </div>
-                <div class="sum-stat" id="pct-{{ m.meal }}">{{ m.attendance_pct }}%</div>
-                <div class="sum-sub" id="sub-{{ m.meal }}">
-                    {{ m.attended_count or 0 }} present · {{ m.absent_count or 0 }} absent · {{ m.unmarked_count or 0 }} unmarked
-                </div>
-                <div class="pct-bar">
-                    <div class="pct-fill" id="bar-{{ m.meal }}" style="width:{{ m.attendance_pct }}%;"></div>
-                </div>
+            {% set marked = (m.attended_count or 0) + (m.absent_count or 0) %}
+            <div class="sum-card {% if loop.first %}active{% endif %}" onclick="switchTab('{{ m.meal }}', this)">
+                <div class="sum-meal">{{ m.meal }}</div>
+                <div class="sum-stat">{{ m.attended_count or 0 }}/{{ m.total_booked }}</div>
+                <div class="sum-sub">{{ m.unmarked_count or 0 }} unmarked</div>
+                <div class="pct-bar"><div class="pct-fill" style="width:{{ m.attendance_pct }}%"></div></div>
             </div>
+            {% else %}
+            <div class="sum-card"><div class="sum-meal">No bookings today</div></div>
             {% endfor %}
         </div>
-        {% endif %}
 
-        {% if bookings %}
+        <!-- Meal tabs -->
         <div class="meal-tabs">
-            <div class="meal-tab active" onclick="switchTab('All')" data-tab="All">
-                All <span class="tab-count">{{ bookings|length }}</span>
+            {% for meal in ['Breakfast','Lunch','Snacks','Dinner'] %}
+            {% set count = bookings | selectattr('meal','equalto',meal) | list | length %}
+            {% if count > 0 %}
+            <div class="meal-tab {% if loop.first %}active{% endif %}" data-meal="{{ meal }}" onclick="switchTab('{{ meal }}', this)">
+                {{ meal }} <span class="tab-count">{{ count }}</span>
             </div>
-            {% for m in meal_summary %}
-            <div class="meal-tab" onclick="switchTab('{{ m.meal }}')" data-tab="{{ m.meal }}">
-                {% if m.meal=='Breakfast' %}☀️{% elif m.meal=='Lunch' %}🍛{% elif m.meal=='Snacks' %}🥪{% else %}🌙{% endif %}
-                {{ m.meal }} <span class="tab-count">{{ m.total_booked }}</span>
-            </div>
+            {% endif %}
             {% endfor %}
         </div>
 
-        <div class="s-card">
-            <div class="card-hdr">
-                <div class="card-title">
-                    <i class="fas fa-list-check"></i>
-                    <span id="tableTitle">All Bookings</span>
-                    <span class="saving-dot" id="savingDot"></span>
+        <!-- Attendance card -->
+        <div class="att-card">
+            <div class="toolbar">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Search by name or roll no…" oninput="filterStudents()">
                 </div>
-                <div class="progress-wrap">
-                    <span class="progress-text" id="progressText">— marked</span>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill" style="width:0%;"></div>
+                <div class="progress-info" id="progressInfo"></div>
+                <button class="btn-mark-all" onclick="markAllVisible()">✓ Mark All Present</button>
+            </div>
+            <div class="student-list" id="studentList">
+                {% for b in bookings %}
+                <div class="stu-row" data-meal="{{ b.meal }}" data-name="{{ b.username | lower }}" data-roll="{{ b.roll_no | lower if b.roll_no else '' }}" id="row-{{ b.id }}">
+                    <div class="roll-badge">{{ b.roll_no or '—' }}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div class="stu-name">{{ b.username }}</div>
+                        <div class="stu-meta">{{ b.meal }}{% if b.guest_count %} · {{ b.guest_count }} guest{% endif %}</div>
+                    </div>
+                    <span class="food-badge {% if b.food_type == 'Veg' %}veg{% else %}nonveg{% endif %}">
+                        {{ b.food_type }}
+                    </span>
+                    {% if b.guest_count %}
+                    <span class="guest-badge">+{{ b.guest_count }}👤</span>
+                    {% endif %}
+                    <div class="tick-wrap">
+                        <button class="tick-btn present {% if b.attended == 1 %}present{% endif %}"
+                                onclick="markAttendance({{ b.id }}, 1, this)" title="Present">✓</button>
+                        <button class="tick-btn absent {% if b.attended == 0 %}absent{% endif %}"
+                                onclick="markAttendance({{ b.id }}, 0, this)" title="Absent">✗</button>
                     </div>
                 </div>
-            </div>
-
-            <div class="bulk-bar">
-                <button class="bulk-btn bulk-present" onclick="bulkMark(1)">✅ Mark All Visible Present</button>
-                <button class="bulk-btn bulk-absent"  onclick="bulkMark(0)">❌ Mark All Visible Absent</button>
-                <span class="bulk-label" id="bulkLabel"></span>
-            </div>
-
-            <div class="search-bar">
-                <input type="text" id="searchInput" placeholder="🔍 Search by name or roll no…" oninput="filterRows()">
-            </div>
-
-            <div style="overflow-x:auto;">
-                <table id="attTable">
-                    <thead>
-                        <tr>
-                            <th>#</th><th>Student</th><th>Roll No</th>
-                            <th>Meal</th><th>Food</th><th>Guests</th>
-                            <th>Status</th><th>Mark Attendance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for b in bookings %}
-                    <tr id="row-{{ b.id }}" data-meal="{{ b.meal }}"
-                        data-attended="{{ b.attended if b.attended is not none else 'null' }}"
-                        class="{% if b.attended == 1 %}marked-present{% elif b.attended == 0 %}marked-absent{% endif %}">
-                        <td style="color:#ccc;font-size:11px;">{{ loop.index }}</td>
-                        <td><strong>{{ b.username }}</strong></td>
-                        <td style="color:#888;">{{ b.roll_no }}</td>
-                        <td><span class="meal-badge meal-{{ b.meal[0] }}">{{ b.meal }}</span></td>
-                        <td>{{ b.food_type }}</td>
-                        <td>{% if b.guest_count and b.guest_count > 0 %}
-                            <span style="font-size:11px;color:#1565c0;font-weight:600;">+{{ b.guest_count }}</span>
-                            {% else %}—{% endif %}</td>
-                        <td id="status-{{ b.id }}">
-                            {% if b.attended == 1 %}<span class="status-badge badge-present">✅ Present</span>
-                            {% elif b.attended == 0 %}<span class="status-badge badge-absent">❌ Absent</span>
-                            {% else %}<span class="status-badge badge-unmarked">— Not marked</span>{% endif %}
-                        </td>
-                        <td>
-                            <div class="mark-wrap">
-                                <button class="att-btn {% if b.attended == 1 %}sel-present{% endif %}"
-                                        id="btn-p-{{ b.id }}" onclick="mark({{ b.id }}, 1)">✅ Present</button>
-                                <button class="att-btn {% if b.attended == 0 %}sel-absent{% endif %}"
-                                        id="btn-a-{{ b.id }}" onclick="mark({{ b.id }}, 0)">❌ Absent</button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
+                <hr class="divider">
+                {% else %}
+                <div class="empty"><i class="fas fa-calendar-times"></i>No bookings for today</div>
+                {% endfor %}
             </div>
         </div>
-        {% else %}
-        <div class="s-card">
-            <div class="empty-state">
-                <i class="fas fa-calendar-xmark"></i>
-                No bookings for today yet.
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 <script>
-let currentTab = 'All';
+let currentMeal = document.querySelector('.meal-tab.active')?.dataset.meal || 'Breakfast';
 
-const mealData = {
-    {% for m in meal_summary %}
-    '{{ m.meal }}': { attended:{{ m.attended_count or 0 }}, absent:{{ m.absent_count or 0 }}, unmarked:{{ m.unmarked_count or 0 }}, total:{{ m.total_booked }} },
-    {% endfor %}
-};
-
-function switchTab(meal) {
-    currentTab = meal;
-    document.querySelectorAll('.meal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === meal));
-    document.querySelectorAll('.sum-card').forEach(c => c.classList.toggle('active', c.id === 'sum-' + meal));
-    document.getElementById('tableTitle').textContent = meal === 'All' ? 'All Bookings' : meal + ' Bookings';
-    document.getElementById('searchInput').value = '';
-    filterRows();
-}
-
-function filterRows() {
-    const q = document.getElementById('searchInput').value.toLowerCase();
-    document.querySelectorAll('#attTable tbody tr').forEach(row => {
-        const mealOk = currentTab === 'All' || row.dataset.meal === currentTab;
-        const textOk = !q || row.innerText.toLowerCase().includes(q);
-        row.style.display = (mealOk && textOk) ? '' : 'none';
+function switchTab(meal, el) {
+    currentMeal = meal;
+    // Update tabs
+    document.querySelectorAll('.meal-tab').forEach(t => t.classList.toggle('active', t.dataset.meal === meal));
+    // Update summary cards
+    document.querySelectorAll('.sum-card').forEach((c, i) => {
+        const sm = c.querySelector('.sum-meal');
+        c.classList.toggle('active', sm && sm.textContent.trim() === meal);
     });
+    filterStudents();
+}
+
+function filterStudents() {
+    const q = document.getElementById('searchInput').value.toLowerCase().trim();
+    const rows = document.querySelectorAll('.stu-row');
+    let visible = 0, present = 0, total = 0;
+
+    rows.forEach(row => {
+        const inMeal = row.dataset.meal === currentMeal;
+        const inSearch = !q || row.dataset.name.includes(q) || row.dataset.roll.includes(q);
+        const show = inMeal && inSearch;
+        row.classList.toggle('hidden', !show);
+        // hide divider after hidden row
+        const div = row.nextElementSibling;
+        if (div && div.classList.contains('divider')) div.style.display = show ? '' : 'none';
+        if (show) {
+            visible++;
+            const presentBtn = row.querySelector('.tick-btn.present');
+            if (presentBtn && presentBtn.classList.contains('present') && presentBtn.textContent === '✓') {
+                // check if it's actually marked (has active style)
+            }
+        }
+    });
+
     updateProgress();
-}
-
-function mark(id, attended) {
-    const dot = document.getElementById('savingDot');
-    dot.classList.add('show');
-
-    fetch('/admin/attendance/mark', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `booking_id=${id}&attended=${attended}`
-    })
-    .then(r => { if (!r.ok) throw new Error(); return r.text(); })
-    .then(() => applyMark(id, attended))
-    .catch(() => alert('Could not save — please try again.'))
-    .finally(() => dot.classList.remove('show'));
-}
-
-function applyMark(id, attended) {
-    const row  = document.getElementById('row-' + id);
-    const old  = row.dataset.attended;
-    const meal = row.dataset.meal;
-
-    row.classList.remove('marked-present', 'marked-absent');
-    row.classList.add(attended === 1 ? 'marked-present' : 'marked-absent');
-
-    document.getElementById('btn-p-' + id).classList.toggle('sel-present', attended === 1);
-    document.getElementById('btn-a-' + id).classList.toggle('sel-absent',  attended === 0);
-
-    document.getElementById('status-' + id).innerHTML = attended === 1
-        ? '<span class="status-badge badge-present">✅ Present</span>'
-        : '<span class="status-badge badge-absent">❌ Absent</span>';
-
-    if (mealData[meal]) {
-        if (old === '1') mealData[meal].attended--;
-        else if (old === '0') mealData[meal].absent--;
-        else mealData[meal].unmarked = Math.max(0, (mealData[meal].unmarked || 0) - 1);
-        if (attended === 1) mealData[meal].attended++;
-        else mealData[meal].absent++;
-    }
-    row.dataset.attended = attended;
-    updateSummaryCards();
-    updateProgress();
-}
-
-function bulkMark(attended) {
-    const toMark = [...document.querySelectorAll('#attTable tbody tr')]
-        .filter(r => r.style.display !== 'none' && r.dataset.attended !== String(attended));
-    if (!toMark.length) return;
-
-    const label = document.getElementById('bulkLabel');
-    label.textContent = `Marking ${toMark.length}…`;
-    document.getElementById('savingDot').classList.add('show');
-
-    Promise.all(toMark.map(row => {
-        const id = row.id.replace('row-', '');
-        return fetch('/admin/attendance/mark', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `booking_id=${id}&attended=${attended}`
-        }).then(r => { if (!r.ok) throw new Error(); return r.text(); })
-          .then(() => applyMark(parseInt(id), attended));
-    }))
-    .then(() => {
-        label.textContent = `✅ Done — ${toMark.length} marked`;
-        setTimeout(() => label.textContent = '', 3000);
-    })
-    .catch(() => label.textContent = '❌ Some failed — refresh and retry')
-    .finally(() => document.getElementById('savingDot').classList.remove('show'));
-}
-
-function updateSummaryCards() {
-    for (const [meal, d] of Object.entries(mealData)) {
-        const pct = (d.attended + d.absent) > 0 ? Math.round(d.attended / (d.attended + d.absent) * 100) : 0;
-        const e = document.getElementById('pct-' + meal); if(e) e.textContent = pct + '%';
-        const s = document.getElementById('sub-' + meal);
-        if(s) s.textContent = `${d.attended} present · ${d.absent} absent · ${d.unmarked} unmarked`;
-        const b = document.getElementById('bar-' + meal); if(b) b.style.width = pct + '%';
-    }
 }
 
 function updateProgress() {
-    const rows   = [...document.querySelectorAll('#attTable tbody tr')].filter(r => r.style.display !== 'none');
-    const marked = rows.filter(r => r.dataset.attended === '1' || r.dataset.attended === '0').length;
-    const pct    = rows.length > 0 ? Math.round(marked / rows.length * 100) : 0;
-    document.getElementById('progressText').textContent = `${marked}/${rows.length} marked`;
-    document.getElementById('progressFill').style.width = pct + '%';
+    const rows = [...document.querySelectorAll(`.stu-row[data-meal="${currentMeal}"]:not(.hidden)`)];
+    const total = rows.length;
+    const present = rows.filter(r => r.querySelector('.tick-btn:first-child').classList.contains('present')).length;
+    const absent  = rows.filter(r => r.querySelector('.tick-btn:last-child').classList.contains('absent')).length;
+    document.getElementById('progressInfo').innerHTML =
+        `<strong>${present}</strong> present · <strong>${absent}</strong> absent · ${total - present - absent} unmarked`;
 }
 
-updateProgress();
+function markAttendance(bookingId, value, btn) {
+    const row = document.getElementById('row-' + bookingId);
+    const presentBtn = row.querySelector('.tick-btn:first-child');
+    const absentBtn  = row.querySelector('.tick-btn:last-child');
+
+    // Toggle off if already selected
+    const newVal = (value === 1 && presentBtn.classList.contains('present')) ? 'null' :
+                   (value === 0 && absentBtn.classList.contains('absent'))   ? 'null' :
+                   String(value);
+
+    // Optimistic UI update
+    presentBtn.classList.toggle('present', newVal === '1');
+    absentBtn.classList.toggle('absent',   newVal === '0');
+
+    const fd = new FormData();
+    fd.append('booking_id', bookingId);
+    fd.append('attended', newVal);
+
+    fetch('/admin/attendance/mark', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) {
+            // Revert on error
+            presentBtn.classList.remove('present');
+            absentBtn.classList.remove('absent');
+            alert('Error saving: ' + (d.error || 'Unknown'));
+        }
+        updateProgress();
+    })
+    .catch(() => {
+        presentBtn.classList.remove('present');
+        absentBtn.classList.remove('absent');
+        alert('Network error — try again');
+    });
+}
+
+function markAllVisible() {
+    const rows = [...document.querySelectorAll(`.stu-row[data-meal="${currentMeal}"]:not(.hidden)`)];
+    rows.forEach(row => {
+        const presentBtn = row.querySelector('.tick-btn:first-child');
+        if (!presentBtn.classList.contains('present')) {
+            const id = row.id.replace('row-', '');
+            markAttendance(id, 1, presentBtn);
+        }
+    });
+}
+
+// Init
+filterStudents();
 </script>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

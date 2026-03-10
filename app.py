@@ -8,14 +8,12 @@ import hmac
 import hashlib
 import base64
 import smtplib
-import urllib.request as _urllib_req
-import json as _json
 import atexit
 import qrcode
 from qrcode.image.svg import SvgImage
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from datetime import timezone as _tz
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -44,114 +42,29 @@ MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail
 MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
-    """Send email — tries Gmail SMTP first (works on Railway),
-    then Resend API, then SendGrid as fallbacks."""
+    """Send HTML email via Gmail SMTP."""
     sender   = (os.environ.get("MAIL_SENDER") or "").strip()
     password = (os.environ.get("MAIL_PASSWORD") or "").replace(" ", "").strip()
-    rs_key   = os.environ.get("RESEND_API_KEY", "").strip()
-    sg_key   = os.environ.get("SENDGRID_API_KEY", "").strip()
-
-    # ── Brevo SMTP (primary — works on Railway/Render free tier) ────
-    brevo_login = os.environ.get("BREVO_LOGIN", "").strip()
-    brevo_pass  = os.environ.get("BREVO_PASSWORD", "").strip()
-    if brevo_login and brevo_pass:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"]    = f"{MAIL_SENDER_NAME} <{sender or brevo_login}>"
-            msg["To"]      = to_address
-            msg.attach(MIMEText(html_body, "html"))
-            server = smtplib.SMTP("smtp-relay.brevo.com", 587, timeout=15)
+    if not sender or not password:
+        print("[EMAIL] Not configured — set MAIL_SENDER and MAIL_PASSWORD in .env")
+        return
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"IntelliMess <{sender}>"
+        msg["To"]      = to_address
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
-            server.login(brevo_login, brevo_pass)
-            server.sendmail(brevo_login, to_address, msg.as_string())
-            server.quit()
-            print(f"[EMAIL] Brevo SMTP sent to {to_address}")
-            return
-        except smtplib.SMTPAuthenticationError:
-            print("[EMAIL ERROR] Brevo auth failed — check BREVO_LOGIN and BREVO_PASSWORD")
-        except OSError as e:
-            print(f"[EMAIL ERROR] Brevo unreachable: {e}")
-        except Exception as e:
-            print(f"[EMAIL ERROR] Brevo: {e}")
-
-    # ── Gmail SMTP fallback ────────────────────────────────────────
-    if sender and password:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = f"{MAIL_SENDER_NAME} <{sender}>"
-        msg["To"]      = to_address
-        msg.attach(MIMEText(html_body, "html"))
-        for port, use_ssl in [(587, False), (465, True)]:
-            try:
-                if use_ssl:
-                    server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=10)
-                else:
-                    server = smtplib.SMTP("smtp.gmail.com", port, timeout=10)
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                server.login(sender, password)
-                server.sendmail(sender, to_address, msg.as_string())
-                server.quit()
-                print(f"[EMAIL] Gmail SMTP sent to {to_address} via port {port}")
-                return
-            except smtplib.SMTPAuthenticationError:
-                print("[EMAIL ERROR] Gmail auth failed — check MAIL_SENDER and MAIL_PASSWORD")
-                break
-            except OSError as e:
-                print(f"[EMAIL] SMTP port {port} blocked: {e}")
-                continue
-            except Exception as e:
-                print(f"[EMAIL ERROR] SMTP port {port}: {e}")
-                continue
-
-    # ── Resend API fallback ────────────────────────────────────────
-    if rs_key:
-        try:
-            from_addr = f"{MAIL_SENDER_NAME} <{sender}>" if sender else f"{MAIL_SENDER_NAME} <onboarding@resend.dev>"
-            payload = _json.dumps({
-                "from": from_addr, "to": [to_address],
-                "subject": subject, "html": html_body
-            }).encode("utf-8")
-            req = _urllib_req.Request(
-                "https://api.resend.com/emails", data=payload,
-                headers={"Authorization": f"Bearer {rs_key}", "Content-Type": "application/json"},
-                method="POST"
-            )
-            try:
-                with _urllib_req.urlopen(req, timeout=15) as resp:
-                    print(f"[EMAIL] Resend OK → {to_address} (status {resp.status})")
-                    return
-            except _urllib_req.HTTPError as e:
-                print(f"[EMAIL ERROR] Resend HTTP {e.code}: {e.read().decode()}")
-        except Exception as e:
-            print(f"[EMAIL ERROR] Resend: {e}")
-
-    # ── SendGrid API fallback ──────────────────────────────────────
-    if sg_key:
-        try:
-            payload = _json.dumps({
-                "personalizations": [{"to": [{"email": to_address}]}],
-                "from": {"email": sender or "noreply@intellimess.com", "name": MAIL_SENDER_NAME},
-                "subject": subject,
-                "content": [{"type": "text/html", "value": html_body}]
-            }).encode("utf-8")
-            req = _urllib_req.Request(
-                "https://api.sendgrid.com/v3/mail/send", data=payload,
-                headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
-                method="POST"
-            )
-            with _urllib_req.urlopen(req, timeout=10) as resp:
-                print(f"[EMAIL] SendGrid OK → {to_address} (status {resp.status})")
-                return
-        except Exception as e:
-            print(f"[EMAIL ERROR] SendGrid: {e}")
-
-    print(f"[EMAIL] No working method — set MAIL_SENDER+MAIL_PASSWORD or RESEND_API_KEY")
-
+            server.login(sender, password)
+            server.sendmail(sender, to_address, msg.as_string())
+        print(f"[EMAIL] Sent to {to_address} — {subject}")
+    except smtplib.SMTPAuthenticationError:
+        print("[EMAIL ERROR] Auth failed — check MAIL_SENDER and MAIL_PASSWORD")
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")
 # ================================================================
 # ----------------  BOOKING REMINDER SCHEDULER  ------------------
 # Two reminders per meal:
@@ -303,8 +216,8 @@ def send_attendance_reminders():
 
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(send_booking_reminders,    'interval', minutes=5)
-scheduler.add_job(send_attendance_reminders, 'interval', minutes=5)
+scheduler.add_job(send_booking_reminders,    'interval', minutes=5, misfire_grace_time=300)
+scheduler.add_job(send_attendance_reminders, 'interval', minutes=5, misfire_grace_time=300)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -2388,7 +2301,7 @@ def admin_attendance():
             FROM bookings b
             JOIN users u ON b.user_id = u.id
             WHERE b.booking_date = %s
-            ORDER BY FIELD(b.meal,'Breakfast','Lunch','Snacks','Dinner'), u.username
+            ORDER BY FIELD(b.meal,'Breakfast','Lunch','Snacks','Dinner'), u.roll_no, u.username
         """, (today,))
         bookings = cursor.fetchall() or []
     except Exception:
@@ -2434,18 +2347,19 @@ def admin_attendance():
 @app.route('/admin/attendance/mark', methods=['POST'])
 def mark_attendance():
     if session.get('role') != 'admin':
-        return redirect('/login')
+        return jsonify({'ok': False, 'error': 'Not authorised'}), 401
     booking_id = request.form.get('booking_id')
-    attended   = request.form.get('attended')   # '1' or '0'
-    if attended not in ('1', '0'):
-        return redirect('/admin/attendance')
+    attended   = request.form.get('attended')   # '1', '0', or 'null'
+    if attended not in ('1', '0', 'null'):
+        return jsonify({'ok': False, 'error': 'Invalid value'}), 400
 
+    val = None if attended == 'null' else int(attended)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE bookings SET attended=%s WHERE id=%s", (int(attended), booking_id))
+    cursor.execute("UPDATE bookings SET attended=%s WHERE id=%s", (val, booking_id))
     conn.commit()
     cursor.close(); conn.close()
-    return redirect('/admin/attendance')
+    return jsonify({'ok': True, 'booking_id': booking_id, 'attended': attended})
 
 
 # ---------------- EXPORT BOOKINGS ----------------
@@ -2743,7 +2657,7 @@ MEAL_VALID_WINDOW_MINS = 90  # 1.5 hours either side of serve time
 
 def _time_window():
     """Returns current 5-minute window number."""
-    return int(datetime.utcnow().timestamp() // 300)
+    return int(datetime.now(timezone.utc).timestamp() // 300)
 
 def current_meal_ist():
     """Returns the meal currently being served based on IST time."""
@@ -2792,204 +2706,6 @@ def verify_qr_token(token):
     return None
 
 
-@app.route('/my-qr')
-def my_qr_page():
-    """Student page showing their QR code."""
-    if 'user_id' not in session or session.get('role') != 'student':
-        return redirect('/login')
-    return render_template('my_qr.html',
-        username=session.get('username', ''),
-        user_id=session['user_id'])
-
-
-@app.route('/qr-code/<int:user_id>.png')
-def qr_code_png(user_id):
-    """Generate and serve the QR code as PNG — jsQR needs bitmap, not SVG."""
-    if 'user_id' not in session:
-        return redirect('/login')
-    if session.get('role') == 'student' and session['user_id'] != user_id:
-        return "Forbidden", 403
-
-    token = make_qr_token(user_id)
-    # Plain token in URL — colons are safe in query string values
-    url = request.host_url.rstrip('/') + f"/admin/scan/mark?token={token}"
-
-    # ERROR_CORRECT_M = less dense QR = much easier for cameras to read
-    # box_size=10 = good size, no PIL resize needed (resize distorts pixels)
-    qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=4
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    resp = Response(buf.read(), mimetype='image/png')
-    resp.headers['Cache-Control'] = 'no-store'
-    return resp
-
-
-@app.route('/admin/scan')
-def admin_scan_page():
-    """Warden's camera scan page."""
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    now  = now_ist()
-    # Auto-detect current meal based on time
-    h = now.hour
-    if h < 7:      current_meal = "Breakfast"
-    elif h < 11:   current_meal = "Lunch"
-    elif h < 15:   current_meal = "Snacks"
-    else:          current_meal = "Dinner"
-    return render_template('admin_scan.html', current_meal=current_meal,
-                           today=now.date())
-
-
-@app.route('/admin/scan/mark')
-def admin_scan_mark():
-    """Called by warden scanner page via fetch() — requires admin session.
-    Students cannot mark their own attendance since this requires admin login.
-    The warden scanner page already requires admin login, so fetch() carries the session.
-    """
-    if session.get('role') != 'admin':
-        return jsonify({'ok': False, 'error': 'Not authorised — warden must be logged in'}), 401
-
-    token = request.args.get('token', '')
-    meal  = request.args.get('meal', '')
-
-    # Auto-detect meal if not provided
-    if meal not in ('Breakfast', 'Lunch', 'Snacks', 'Dinner'):
-        h = now_ist().hour
-        if h < 7:    meal = 'Breakfast'
-        elif h < 11: meal = 'Lunch'
-        elif h < 15: meal = 'Snacks'
-        else:        meal = 'Dinner'
-
-    print(f"[QR SCAN] token={token!r} meal={meal}")
-    user_id = verify_qr_token(token)
-    print(f"[QR SCAN] verify result: user_id={user_id}")
-
-    if not user_id:
-        return jsonify({'ok': False, 'error': 'Invalid or expired QR — ask student to refresh their QR page.'}), 400
-
-    today = now_ist().date()
-    conn  = get_db_connection()
-    cur   = conn.cursor(dictionary=True, buffered=True)
-
-    # Check student has a booking for this meal today
-    cur.execute("""
-        SELECT b.id, b.food_type, b.guest_count, u.username, u.roll_no
-        FROM bookings b
-        JOIN users u ON b.user_id = u.id
-        WHERE b.user_id=%s AND b.meal=%s AND b.booking_date=%s
-    """, (user_id, meal, today))
-    booking = cur.fetchone()
-
-    is_browser = request.headers.get('Accept', '').startswith('text/html')
-
-    if not booking:
-        cur.close(); conn.close()
-        if is_browser:
-            return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
-                <h2>⚠️ No Booking Found</h2>
-                <p>No {meal} booking found for this student today.</p>
-            </body></html>""", 404
-        return jsonify({'ok': False, 'error': f'No {meal} booking found for this student today'}), 404
-
-    # Check if already marked
-    if booking.get('attended') is not None:
-        already = 'Present' if booking['attended'] == 1 else 'Absent'
-        cur.close(); conn.close()
-        if is_browser:
-            return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
-                <h2>⚠️ Already Marked</h2>
-                <p><b>{booking['username']}</b> already marked <b>{already}</b> for {meal}.</p>
-            </body></html>"""
-        return jsonify({
-            'ok': True,
-            'already': True,
-            'username': booking['username'],
-            'roll_no': booking['roll_no'],
-            'food_type': booking['food_type'],
-            'status': already
-        })
-
-    # Mark present
-    upd = conn.cursor()
-    upd.execute("UPDATE bookings SET attended=1 WHERE id=%s", (booking['id'],))
-    conn.commit()
-    upd.close(); cur.close(); conn.close()
-
-    if is_browser:
-        return f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px'>
-            <h2>✅ Attendance Marked</h2>
-            <p><b>{booking['username']}</b> ({booking['roll_no']})<br>
-            {booking['food_type']} {meal} — Present</p>
-        </body></html>"""
-
-    return jsonify({
-        'ok': True,
-        'already': False,
-        'username': booking['username'],
-        'roll_no':  booking['roll_no'],
-        'food_type': booking['food_type'],
-        'guest_count': booking.get('guest_count') or 0,
-        'meal': meal,
-        'status': 'Present'
-    })
-
-
-# ---------------- DEBUG ROUTES (remove after testing) ----------------
-
-@app.route('/admin/test-qr')
-def test_qr_debug():
-    """Debug page — shows token generation and verification details."""
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    uid = request.args.get('uid', '1')
-    try:
-        uid = int(uid)
-    except:
-        uid = 1
-
-    import time as _time
-    window  = _time_window()
-    token   = make_qr_token(uid)
-    secret  = (os.environ.get("INTELLIMESS_SECRET") or "intellimess_dev_secret_change_me")
-    verify  = verify_qr_token(token)
-    now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-    now_ist_str = now_ist().strftime('%Y-%m-%d %H:%M:%S IST')
-
-    return f"""
-    <html><body style='font-family:monospace;padding:30px;background:#111;color:#0f0;'>
-    <h2>🔍 QR Debug</h2>
-    <pre>
-Server UTC time : {now_utc}
-Server IST time : {now_ist_str}
-UNIX timestamp  : {int(datetime.utcnow().timestamp())}
-Current window  : {window}
-Secret loaded   : {"YES (" + secret[:4] + "...)" if secret else "NO — using fallback!"}
-Token for uid={uid}: {token}
-Token parts     : {token.split(":")}
-Verify result   : {verify} (should be {uid})
-    </pre>
-    <h3>Live QR for uid={uid} — try scanning this with your phone camera:</h3>
-    <img src='/qr-code/{uid}.png' style='width:250px;height:250px;background:#fff;padding:10px;display:block;margin:10px 0;'>
-    <h3>Test another user:</h3>
-    <a href='/admin/test-qr?uid=1' style='color:#0f0'>uid=1</a> | 
-    <a href='/admin/test-qr?uid=2' style='color:#0f0'>uid=2</a> | 
-    <a href='/admin/test-qr?uid=3' style='color:#0f0'>uid=3</a>
-    <br><br>
-    <h3>Test scan/mark directly (click = same as scanning):</h3>
-    <a href='/admin/scan/mark?token={token}&meal=Dinner' style='color:#0f0;font-size:16px;'>
-        ▶ Click to mark uid={uid} present for Dinner
-    </a>
-    </body></html>
-    """
-
 @app.route('/admin/test-email')
 def test_email():
     """Send a test email to verify SMTP config. Admin only."""
@@ -3000,21 +2716,17 @@ def test_email():
         return "Set MAIL_SENDER env var first", 400
     send_email(to, "✅ IntelliMess Email Test",
         "<h2>Email is working!</h2><p>IntelliMess SMTP config is correct.</p>")
-    sender   = MAIL_SENDER.strip()
-    password = MAIL_PASSWORD.replace(" ", "").strip()
-    rs_key   = os.environ.get("RESEND_API_KEY","").strip()
-    sg_key   = os.environ.get("SENDGRID_API_KEY","").strip()
+    sender   = (os.environ.get("MAIL_SENDER") or "").strip()
+    password = (os.environ.get("MAIL_PASSWORD") or "").replace(" ", "").strip()
     return f"""
     <html><body style='font-family:monospace;padding:30px;background:#111;color:#0f0;'>
     <h2>📧 Email Test</h2>
     <pre>
-RESEND_API_KEY  : {"SET (" + rs_key[:6] + "...)" if rs_key else "NOT SET"}
-SENDGRID_API_KEY: {"SET" if sg_key else "NOT SET"}
 MAIL_SENDER     : {sender or "NOT SET"}
 MAIL_PASSWORD   : {"SET (" + str(len(password)) + " chars)" if password else "NOT SET"}
 Sent test to    : {to}
     </pre>
-    <p>Check Render logs for [EMAIL] or [EMAIL ERROR] lines.</p>
+    <p>Check logs for [EMAIL] or [EMAIL ERROR] lines.</p>
     </body></html>
     """
 

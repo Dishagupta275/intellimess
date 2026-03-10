@@ -294,26 +294,50 @@ function stopScanner() {
 
 function startScanLoop() {
     if (scanInterval) clearInterval(scanInterval);
-    scanInterval = setInterval(() => {
+
+    // Multi-resolution scan: try full res first, then cropped center
+    function tryScan() {
         if (!scanning || video.readyState < 2 || video.videoWidth === 0) return;
 
-        // Scale down for speed
-        const scale = Math.min(400 / video.videoWidth, 400 / video.videoHeight);
-        const w = Math.floor(video.videoWidth  * scale);
-        const h = Math.floor(video.videoHeight * scale);
-        scanCtx.drawImage(video, 0, 0, w, h);
-        const imgData = scanCtx.getImageData(0, 0, w, h);
-        const code    = jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+
+        // Attempt 1: full frame at native resolution
+        scanCanvas.width  = vw;
+        scanCanvas.height = vh;
+        scanCtx.drawImage(video, 0, 0, vw, vh);
+        let imgData = scanCtx.getImageData(0, 0, vw, vh);
+        let code = jsQR(imgData.data, vw, vh, { inversionAttempts: 'attemptBoth' });
+
+        // Attempt 2: center crop (QR usually in middle) — sharper focus area
+        if (!code) {
+            const cx = Math.floor(vw * 0.15), cy = Math.floor(vh * 0.15);
+            const cw = Math.floor(vw * 0.70), ch = Math.floor(vh * 0.70);
+            scanCanvas.width  = cw;
+            scanCanvas.height = ch;
+            scanCtx.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
+            imgData = scanCtx.getImageData(0, 0, cw, ch);
+            code = jsQR(imgData.data, cw, ch, { inversionAttempts: 'attemptBoth' });
+        }
+
+        // Attempt 3: contrast boost — helps with dim screens
+        if (!code) {
+            const cw = scanCanvas.width, ch = scanCanvas.height;
+            scanCtx.drawImage(video, 0, 0, cw, ch);
+            scanCtx.filter = 'contrast(1.8) brightness(1.1)';
+            scanCtx.drawImage(video, 0, 0, cw, ch);
+            scanCtx.filter = 'none';
+            imgData = scanCtx.getImageData(0, 0, cw, ch);
+            code = jsQR(imgData.data, cw, ch, { inversionAttempts: 'attemptBoth' });
+        }
 
         if (code && code.data && !cooldown) {
             console.log('[QR] Raw data:', code.data);
             let token = null;
             try {
-                // Try parsing as URL first
                 const url = new URL(code.data);
                 token = url.searchParams.get('token');
             } catch(e) {
-                // Maybe it's just the raw token
                 token = code.data;
             }
             console.log('[QR] Token:', token);
@@ -322,7 +346,8 @@ function startScanLoop() {
                 processQR(token);
             }
         }
-    }, 300);
+    }
+    scanInterval = setInterval(tryScan, 400);
 }
 
 function processQR(token) {
