@@ -51,7 +51,33 @@ def send_email(to_address, subject, html_body):
     rs_key   = os.environ.get("RESEND_API_KEY", "").strip()
     sg_key   = os.environ.get("SENDGRID_API_KEY", "").strip()
 
-    # ── Gmail SMTP (primary — works on Railway) ────────────────────
+    # ── Brevo SMTP (primary — works on Railway/Render free tier) ────
+    brevo_login = os.environ.get("BREVO_LOGIN", "").strip()
+    brevo_pass  = os.environ.get("BREVO_PASSWORD", "").strip()
+    if brevo_login and brevo_pass:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = f"{MAIL_SENDER_NAME} <{sender or brevo_login}>"
+            msg["To"]      = to_address
+            msg.attach(MIMEText(html_body, "html"))
+            server = smtplib.SMTP("smtp-relay.brevo.com", 587, timeout=15)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(brevo_login, brevo_pass)
+            server.sendmail(brevo_login, to_address, msg.as_string())
+            server.quit()
+            print(f"[EMAIL] Brevo SMTP sent to {to_address}")
+            return
+        except smtplib.SMTPAuthenticationError:
+            print("[EMAIL ERROR] Brevo auth failed — check BREVO_LOGIN and BREVO_PASSWORD")
+        except OSError as e:
+            print(f"[EMAIL ERROR] Brevo unreachable: {e}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Brevo: {e}")
+
+    # ── Gmail SMTP fallback ────────────────────────────────────────
     if sender and password:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
@@ -71,13 +97,13 @@ def send_email(to_address, subject, html_body):
                 server.sendmail(sender, to_address, msg.as_string())
                 server.quit()
                 print(f"[EMAIL] Gmail SMTP sent to {to_address} via port {port}")
-                return  # success
+                return
             except smtplib.SMTPAuthenticationError:
-                print(f"[EMAIL ERROR] Gmail auth failed — check MAIL_SENDER and MAIL_PASSWORD")
-                break  # no point trying other port
+                print("[EMAIL ERROR] Gmail auth failed — check MAIL_SENDER and MAIL_PASSWORD")
+                break
             except OSError as e:
                 print(f"[EMAIL] SMTP port {port} blocked: {e}")
-                continue  # try next port
+                continue
             except Exception as e:
                 print(f"[EMAIL ERROR] SMTP port {port}: {e}")
                 continue
