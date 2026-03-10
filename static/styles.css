@@ -1069,3 +1069,115 @@ table {
         grid-template-columns: 1fr !important;
     }
 }
+
+/* ================================================================
+   DESKTOP IMPROVEMENTS (min-width: 1024px)
+   ================================================================ */
+@media (min-width: 1024px) {
+    /* Wider containers on big screens */
+    .dashboard-container {
+        max-width: 1280px;
+        padding: 36px 40px;
+    }
+
+    /* Navbar — larger, more spacious */
+    .navbar {
+        padding: 16px 48px;
+    }
+    .navbar-brand {
+        font-size: 24px;
+    }
+    .nav-links {
+        gap: 6px;
+    }
+    .nav-links a {
+        padding: 9px 18px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    /* Always hide hamburger on desktop */
+    .hamburger {
+        display: none !important;
+    }
+    /* Always show nav links on desktop */
+    .nav-links {
+        display: flex !important;
+        position: static !important;
+        flex-direction: row !important;
+        background: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+
+    /* Stats grid — more columns */
+    .stats-grid,
+    .admin-stats,
+    .quick-stats {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+
+    /* Dashboard links — 4 per row */
+    .dashboard-links {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+
+    /* Bigger cards */
+    .stat-card,
+    .admin-stat-card {
+        padding: 24px !important;
+    }
+    .stat-card h3,
+    .admin-stat-card h3 {
+        font-size: 32px !important;
+    }
+
+    /* Dashboard header */
+    .dashboard-header h1 {
+        font-size: 36px !important;
+    }
+
+    /* Charts — 2 columns */
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 24px;
+    }
+
+    /* Forecast grid */
+    .forecast-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+
+    /* Achievements */
+    .achievements-grid, .badges-grid {
+        grid-template-columns: repeat(4, 1fr) !important;
+    }
+
+    /* Calendar — all 7 days in a row */
+    .calendar-grid {
+        grid-template-columns: repeat(7, 1fr) !important;
+    }
+
+    /* Tables — no min-width needed on desktop */
+    table {
+        min-width: unset;
+        width: 100%;
+    }
+    th, td {
+        padding: 14px 16px !important;
+        white-space: nowrap;
+    }
+
+    /* Form cards — max width */
+    .booking-card, .form-card {
+        max-width: 680px;
+        margin: 0 auto;
+    }
+
+    /* Auth card */
+    .auth-card {
+        padding: 48px;
+    }
+}

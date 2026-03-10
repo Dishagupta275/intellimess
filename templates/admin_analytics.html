@@ -140,5 +140,6 @@ const dishes={{dish_stats|tojson}};
 new Chart(document.getElementById('dishRatingChart'),{type:'bar',data:{labels:dishes.map(r=>r.dish_name),datasets:[{label:'Avg Rating',data:dishes.map(r=>parseFloat(r.avg_rating).toFixed(2)),backgroundColor:dishes.map(r=>r.avg_rating>=4?C.green:r.avg_rating>=3?C.orange:C.red),borderRadius:8}]},options:{plugins:{legend:{display:false}},scales:{y:{min:0,max:5,ticks:{stepSize:1}}}}});
 {% endif %}
 </script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

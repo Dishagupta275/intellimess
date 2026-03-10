@@ -44,98 +44,87 @@ MAIL_PASSWORD    = os.environ.get("MAIL_PASSWORD", "")       # ← 16-char Gmail
 MAIL_SENDER_NAME = "IntelliMess"
 
 def send_email(to_address, subject, html_body):
-    """Send email via Resend API (works on Render free plan, 100/day free).
-    Falls back to SendGrid, then Gmail SMTP."""
-    sender   = MAIL_SENDER.strip()
+    """Send email — tries Gmail SMTP first (works on Railway),
+    then Resend API, then SendGrid as fallbacks."""
+    sender   = (os.environ.get("MAIL_SENDER") or "").strip()
+    password = (os.environ.get("MAIL_PASSWORD") or "").replace(" ", "").strip()
     rs_key   = os.environ.get("RESEND_API_KEY", "").strip()
     sg_key   = os.environ.get("SENDGRID_API_KEY", "").strip()
 
-    # ── Resend (preferred) ─────────────────────────────────────────
-    if rs_key:
-        try:
-            # Use onboarding@resend.dev if sender not a verified domain
-            from_addr = f"{MAIL_SENDER_NAME} <{sender}>" if sender else f"{MAIL_SENDER_NAME} <onboarding@resend.dev>"
-            payload = _json.dumps({
-                "from":    from_addr,
-                "to":      [to_address],
-                "subject": subject,
-                "html":    html_body
-            }).encode("utf-8")
-            req = _urllib_req.Request(
-                "https://api.resend.com/emails",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {rs_key}",
-                    "Content-Type":  "application/json"
-                },
-                method="POST"
-            )
-            try:
-                with _urllib_req.urlopen(req, timeout=15) as resp:
-                    body = resp.read().decode()
-                    print(f"[EMAIL] Resend OK → {to_address} (status {resp.status}) id={body}")
-            except _urllib_req.HTTPError as e:
-                err_body = e.read().decode()
-                print(f"[EMAIL ERROR] Resend HTTP {e.code}: {err_body}")
-        except Exception as e:
-            print(f"[EMAIL ERROR] Resend exception: {e}")
-        return
-
-    # ── SendGrid fallback ──────────────────────────────────────────
-    if sg_key:
-        try:
-            payload = _json.dumps({
-                "personalizations": [{"to": [{"email": to_address}]}],
-                "from": {"email": sender, "name": MAIL_SENDER_NAME},
-                "subject": subject,
-                "content": [{"type": "text/html", "value": html_body}]
-            }).encode("utf-8")
-            req = _urllib_req.Request(
-                "https://api.sendgrid.com/v3/mail/send",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {sg_key}",
-                    "Content-Type":  "application/json"
-                },
-                method="POST"
-            )
-            with _urllib_req.urlopen(req, timeout=10) as resp:
-                print(f"[EMAIL] SendGrid sent to {to_address} (status {resp.status}) — {subject}")
-        except Exception as e:
-            print(f"[EMAIL ERROR] SendGrid failed: {e}")
-        return
-
-    # ── Gmail SMTP last resort ─────────────────────────────────────
-    password = MAIL_PASSWORD.replace(" ", "").strip()
-    if not sender or not password:
-        print("[EMAIL] Not configured — set RESEND_API_KEY in Render env vars")
-        return
-    try:
+    # ── Gmail SMTP (primary — works on Railway) ────────────────────
+    if sender and password:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"]    = f"{MAIL_SENDER_NAME} <{sender}>"
         msg["To"]      = to_address
         msg.attach(MIMEText(html_body, "html"))
-        sent = False
         for port, use_ssl in [(587, False), (465, True)]:
             try:
                 if use_ssl:
                     server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=10)
                 else:
                     server = smtplib.SMTP("smtp.gmail.com", port, timeout=10)
-                    server.ehlo(); server.starttls(); server.ehlo()
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
                 server.login(sender, password)
                 server.sendmail(sender, to_address, msg.as_string())
                 server.quit()
-                print(f"[EMAIL] SMTP sent to {to_address} via port {port}")
-                sent = True
-                break
-            except OSError:
+                print(f"[EMAIL] Gmail SMTP sent to {to_address} via port {port}")
+                return  # success
+            except smtplib.SMTPAuthenticationError:
+                print(f"[EMAIL ERROR] Gmail auth failed — check MAIL_SENDER and MAIL_PASSWORD")
+                break  # no point trying other port
+            except OSError as e:
+                print(f"[EMAIL] SMTP port {port} blocked: {e}")
+                continue  # try next port
+            except Exception as e:
+                print(f"[EMAIL ERROR] SMTP port {port}: {e}")
                 continue
-        if not sent:
-            print("[EMAIL ERROR] All methods failed — add RESEND_API_KEY to Render env vars")
-    except Exception as e:
-        print(f"[EMAIL ERROR] {e}")
+
+    # ── Resend API fallback ────────────────────────────────────────
+    if rs_key:
+        try:
+            from_addr = f"{MAIL_SENDER_NAME} <{sender}>" if sender else f"{MAIL_SENDER_NAME} <onboarding@resend.dev>"
+            payload = _json.dumps({
+                "from": from_addr, "to": [to_address],
+                "subject": subject, "html": html_body
+            }).encode("utf-8")
+            req = _urllib_req.Request(
+                "https://api.resend.com/emails", data=payload,
+                headers={"Authorization": f"Bearer {rs_key}", "Content-Type": "application/json"},
+                method="POST"
+            )
+            try:
+                with _urllib_req.urlopen(req, timeout=15) as resp:
+                    print(f"[EMAIL] Resend OK → {to_address} (status {resp.status})")
+                    return
+            except _urllib_req.HTTPError as e:
+                print(f"[EMAIL ERROR] Resend HTTP {e.code}: {e.read().decode()}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Resend: {e}")
+
+    # ── SendGrid API fallback ──────────────────────────────────────
+    if sg_key:
+        try:
+            payload = _json.dumps({
+                "personalizations": [{"to": [{"email": to_address}]}],
+                "from": {"email": sender or "noreply@intellimess.com", "name": MAIL_SENDER_NAME},
+                "subject": subject,
+                "content": [{"type": "text/html", "value": html_body}]
+            }).encode("utf-8")
+            req = _urllib_req.Request(
+                "https://api.sendgrid.com/v3/mail/send", data=payload,
+                headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
+                method="POST"
+            )
+            with _urllib_req.urlopen(req, timeout=10) as resp:
+                print(f"[EMAIL] SendGrid OK → {to_address} (status {resp.status})")
+                return
+        except Exception as e:
+            print(f"[EMAIL ERROR] SendGrid: {e}")
+
+    print(f"[EMAIL] No working method — set MAIL_SENDER+MAIL_PASSWORD or RESEND_API_KEY")
 
 # ================================================================
 # ----------------  BOOKING REMINDER SCHEDULER  ------------------
@@ -294,13 +283,21 @@ scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
 # ---------------- DATABASE ----------------
+DB_HOST = os.environ.get("MYSQL_ADDON_HOST") or "boepijlcqxhibaudjeck-mysql.services.clever-cloud.com"
+DB_USER = os.environ.get("MYSQL_ADDON_USER") or "ublerrfhpva5tzcq"
+DB_PASS = os.environ.get("MYSQL_ADDON_PASSWORD") or "sNgAJyIWpiEg9c2dB2sX"
+DB_NAME = os.environ.get("MYSQL_ADDON_DB") or "boepijlcqxhibaudjeck"
+DB_PORT = int(os.environ.get("MYSQL_ADDON_PORT") or 3306)
+
+print(f"[DB] Connecting to {DB_HOST}:{DB_PORT} db={DB_NAME} user={DB_USER}")
+
 def get_db_connection():
     return mysql.connector.connect(
-        host     = os.environ.get("MYSQL_ADDON_HOST"),
-        user     = os.environ.get("MYSQL_ADDON_USER"),
-        password = os.environ.get("MYSQL_ADDON_PASSWORD"),
-        database = os.environ.get("MYSQL_ADDON_DB"),
-        port     = int(os.environ.get("MYSQL_ADDON_PORT", 3306)),
+        host     = DB_HOST,
+        user     = DB_USER,
+        password = DB_PASS,
+        database = DB_NAME,
+        port     = DB_PORT,
     )
 
 # ---------------- HOME ----------------

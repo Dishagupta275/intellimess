@@ -8,13 +8,26 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { margin:0; }
-        .page-wrap { max-width:520px; margin:28px auto; padding:0 16px 60px; }
-        .page-hdr  { color:#fff; margin-bottom:20px; }
-        .page-hdr h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+
+        /* ── DESKTOP layout ── */
+        .page-wrap {
+            max-width:1100px; margin:28px auto; padding:0 24px 60px;
+            display:grid; grid-template-columns:420px 1fr; gap:24px; align-items:start;
+        }
+        .left-col  { grid-column:1; }
+        .right-col { grid-column:2; }
+        .page-hdr  { grid-column:1/-1; color:#fff; margin-bottom:4px; }
+        .page-hdr h1 { font-size:26px; font-weight:700; margin-bottom:4px; }
         .page-hdr p  { font-size:13px; opacity:.85; }
 
-        .meal-selector { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
-        .meal-btn { flex:1; min-width:90px; padding:10px 6px; border-radius:12px;
+        /* ── MOBILE layout ── */
+        @media(max-width:700px){
+            .page-wrap { grid-template-columns:1fr; max-width:520px; padding:0 14px 60px; }
+            .left-col, .right-col { grid-column:1; }
+        }
+
+        .meal-selector { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+        .meal-btn { flex:1; min-width:80px; padding:10px 6px; border-radius:12px;
                     font-size:13px; font-weight:600; cursor:pointer; text-align:center;
                     border:2px solid #e0e0e0; background:#fff; color:#888;
                     transition:all .2s; font-family:inherit; }
@@ -26,48 +39,71 @@
 
         .scanner-card { background:#fff; border-radius:20px; overflow:hidden;
                         box-shadow:0 8px 30px rgba(0,0,0,.12); margin-bottom:16px; }
-        .cam-wrap { position:relative; background:#111; aspect-ratio:1; max-height:340px;
+        .cam-wrap { position:relative; background:#111; aspect-ratio:1;
                     display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        #video { width:100%; height:100%; object-fit:cover; display:none; }
+        #video  { width:100%; height:100%; object-fit:cover; display:none; }
         #canvas { display:none; }
 
         .scan-overlay { position:absolute; inset:0; pointer-events:none;
                         display:none; align-items:center; justify-content:center; }
-        .scan-box { width:200px; height:200px; position:relative; }
+        .scan-box { width:65%; max-width:220px; aspect-ratio:1; position:relative; }
         .scan-box::before,.scan-box::after,.scan-box span::before,.scan-box span::after {
-            content:''; position:absolute; width:24px; height:24px; border-color:#4CAF50; border-style:solid; }
+            content:''; position:absolute; width:22px; height:22px;
+            border-color:#4CAF50; border-style:solid; }
         .scan-box::before  { top:0;    left:0;  border-width:3px 0 0 3px; }
         .scan-box::after   { top:0;    right:0; border-width:3px 3px 0 0; }
         .scan-box span::before { bottom:0; left:0;  border-width:0 0 3px 3px; }
         .scan-box span::after  { bottom:0; right:0; border-width:0 3px 3px 0; }
         .scan-line { position:absolute; left:4px; right:4px; height:2px;
                      background:linear-gradient(90deg,transparent,#4CAF50,transparent);
-                     animation:scanline 2s linear infinite; top:0; }
-        @keyframes scanline { 0%{top:4px} 100%{top:196px} }
+                     animation:scanline 1.8s linear infinite; top:4px; }
+        @keyframes scanline { 0%{top:4px} 100%{bottom:4px;top:calc(100% - 6px)} }
 
-        /* Permission / placeholder states */
         .cam-placeholder { color:#888; font-size:13px; text-align:center;
                            padding:30px 20px; display:flex; flex-direction:column;
                            align-items:center; gap:10px; }
         .cam-placeholder i { font-size:44px; color:#555; }
         .cam-placeholder .hint { font-size:11px; color:#555; max-width:240px; line-height:1.6; }
 
-        /* HTTPS warning */
-        .https-warn { background:#fff3e0; border-left:4px solid #FF9800; border-radius:12px;
-                      padding:14px 16px; margin-bottom:16px; font-size:13px; color:#555;
-                      display:none; }
-        .https-warn strong { color:#e65100; display:block; margin-bottom:4px; }
-
         .scan-ctrl { padding:14px 16px; display:flex; gap:10px; }
-        .btn-start { flex:1; padding:12px; border-radius:12px; font-size:14px;
+        .btn-start { flex:1; padding:13px; border-radius:12px; font-size:15px;
                      font-weight:700; cursor:pointer; border:none; font-family:inherit;
                      background:#4CAF50; color:#fff; transition:all .2s; }
         .btn-start:hover { background:#388e3c; }
         .btn-start:disabled { background:#ccc; cursor:not-allowed; }
-        .btn-stop { padding:12px 18px; border-radius:12px; font-size:14px;
+        .btn-stop { padding:13px 18px; border-radius:12px; font-size:14px;
                     font-weight:700; cursor:pointer; border:none; font-family:inherit;
                     background:#f5f5f5; color:#888; }
 
+        /* Stats */
+        .stat-bar { display:flex; gap:10px; margin-bottom:16px; }
+        .stat-chip { flex:1; background:#fff; border-radius:10px; padding:12px 10px;
+                     text-align:center; font-size:11px; color:#888;
+                     box-shadow:0 2px 8px rgba(0,0,0,.06); }
+        .stat-chip strong { display:block; font-size:22px; color:#333; font-weight:700; }
+
+        /* Recent scans */
+        .recent-card { background:#fff; border-radius:16px; padding:20px 22px;
+                       box-shadow:0 4px 16px rgba(0,0,0,.07); }
+        .recent-title { font-size:14px; font-weight:700; color:#333; margin-bottom:14px;
+                        display:flex; align-items:center; gap:8px; }
+        .recent-title i { color:#4CAF50; }
+        .scan-item { display:flex; align-items:center; gap:12px; padding:10px 0;
+                     border-bottom:1px solid #f5f5f5; }
+        .scan-item:last-child { border:none; }
+        .scan-avatar { width:38px; height:38px; border-radius:50%; background:#e8f5e9;
+                       display:flex; align-items:center; justify-content:center;
+                       font-size:15px; font-weight:700; color:#2e7d32; flex-shrink:0; }
+        .scan-avatar.err  { background:#fce4ec; color:#c62828; }
+        .scan-avatar.warn { background:#fff3e0; color:#e65100; }
+        .scan-info { flex:1; min-width:0; }
+        .scan-name { font-size:13px; font-weight:600; color:#333; }
+        .scan-sub  { font-size:11px; color:#aaa; margin-top:1px; }
+        .scan-time { font-size:11px; color:#ccc; white-space:nowrap; }
+        .empty-scans { text-align:center; padding:30px; color:#ccc; font-size:13px; }
+        .empty-scans i { display:block; font-size:32px; margin-bottom:8px; }
+
+        /* Toast */
         .result-toast { position:fixed; bottom:24px; left:50%;
                         transform:translateX(-50%) translateY(120px);
                         min-width:300px; max-width:90vw; border-radius:16px;
@@ -82,45 +118,22 @@
         .toast-detail { font-size:12px; color:#888; }
         .toast-icon   { font-size:28px; float:right; margin-left:12px; margin-top:-2px; }
 
-        .stat-bar { display:flex; gap:10px; margin-bottom:16px; }
-        .stat-chip { flex:1; background:#fff; border-radius:10px; padding:10px 12px;
-                     text-align:center; font-size:11px; color:#888;
-                     box-shadow:0 2px 8px rgba(0,0,0,.06); }
-        .stat-chip strong { display:block; font-size:20px; color:#333; font-weight:700; }
-
-        .recent-card { background:#fff; border-radius:16px; padding:20px 22px;
-                       box-shadow:0 4px 16px rgba(0,0,0,.07); }
-        .recent-title { font-size:14px; font-weight:700; color:#333; margin-bottom:14px;
-                        display:flex; align-items:center; gap:8px; }
-        .recent-title i { color:#4CAF50; }
-        .scan-item { display:flex; align-items:center; gap:12px; padding:10px 0;
-                     border-bottom:1px solid #f5f5f5; }
-        .scan-item:last-child { border:none; }
-        .scan-avatar { width:36px; height:36px; border-radius:50%; background:#e8f5e9;
-                       display:flex; align-items:center; justify-content:center;
-                       font-size:14px; font-weight:700; color:#2e7d32; flex-shrink:0; }
-        .scan-avatar.err { background:#fce4ec; color:#c62828; }
-        .scan-avatar.warn { background:#fff3e0; color:#e65100; }
-        .scan-info { flex:1; min-width:0; }
-        .scan-name { font-size:13px; font-weight:600; color:#333; }
-        .scan-sub  { font-size:11px; color:#aaa; margin-top:1px; }
-        .scan-time { font-size:11px; color:#ccc; white-space:nowrap; }
-        .empty-scans { text-align:center; padding:24px; color:#ccc; font-size:13px; }
-        .empty-scans i { display:block; font-size:28px; margin-bottom:8px; }
-
         .back-link { color:#fff; text-decoration:none; font-size:14px; font-weight:500;
                      display:inline-flex; align-items:center; gap:7px; margin-bottom:14px; }
         .back-link:hover { opacity:.8; }
+
+        /* Desktop: bigger recent list */
+        @media(min-width:701px){
+            .recent-card { min-height:400px; }
+            .stat-chip strong { font-size:28px; }
+        }
     </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
     <nav class="navbar">
         <a href="/admin" class="navbar-brand"><i class="fas fa-utensils"></i><span>IntelliMess</span></a>
-        <button class="hamburger" id="hamburger" onclick="toggleNav()" aria-label="Menu">
-            <span></span><span></span><span></span>
-        </button>
-        <div id="navLinks" class="nav-links">
+        <div class="nav-links">
             <a href="/admin"><i class="fas fa-home"></i> Dashboard</a>
             <a href="/admin/attendance"><i class="fas fa-list-check"></i> Attendance</a>
             <a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -128,67 +141,59 @@
     </nav>
 
     <div class="page-wrap">
-        <a href="/admin/attendance" class="back-link"><i class="fas fa-arrow-left"></i> Attendance</a>
         <div class="page-hdr">
+            <a href="/admin/attendance" class="back-link"><i class="fas fa-arrow-left"></i> Attendance</a>
             <h1><i class="fas fa-qrcode"></i> QR Scanner</h1>
-            <p>{{ today.strftime('%A, %d %B %Y') }} — scan students as they arrive</p>
+            <p>{{ today.strftime('%A, %d %B %Y') }} — point camera at student's QR code</p>
         </div>
 
-        <!-- HTTPS warning — shown if not on localhost/https -->
-        <div class="https-warn" id="httpsWarn">
-            <strong>⚠️ Camera requires HTTPS</strong>
-            You're accessing this over a local IP address. Browsers only allow camera access on
-            <code>localhost</code> or <code>https://</code> connections. Either:
-            <br><br>
-            • Access via <code>http://localhost:5000/admin/scan</code> on this device, OR<br>
-            • Deploy to Render (HTTPS) and use that URL on your phone
-        </div>
+        <!-- LEFT: camera + meal selector -->
+        <div class="left-col">
+            <div class="meal-selector">
+                <button class="meal-btn {% if current_meal=='Breakfast' %}active{% endif %}" data-meal="Breakfast" onclick="setMeal('Breakfast')">☀️ Breakfast</button>
+                <button class="meal-btn {% if current_meal=='Lunch' %}active{% endif %}"     data-meal="Lunch"     onclick="setMeal('Lunch')">🍛 Lunch</button>
+                <button class="meal-btn {% if current_meal=='Snacks' %}active{% endif %}"   data-meal="Snacks"    onclick="setMeal('Snacks')">🥪 Snacks</button>
+                <button class="meal-btn {% if current_meal=='Dinner' %}active{% endif %}"   data-meal="Dinner"    onclick="setMeal('Dinner')">🌙 Dinner</button>
+            </div>
 
-        <!-- Meal selector -->
-        <div class="meal-selector">
-            <button class="meal-btn {% if current_meal=='Breakfast' %}active{% endif %}" data-meal="Breakfast" onclick="setMeal('Breakfast')">☀️ Breakfast</button>
-            <button class="meal-btn {% if current_meal=='Lunch' %}active{% endif %}"     data-meal="Lunch"     onclick="setMeal('Lunch')">🍛 Lunch</button>
-            <button class="meal-btn {% if current_meal=='Snacks' %}active{% endif %}"   data-meal="Snacks"    onclick="setMeal('Snacks')">🥪 Snacks</button>
-            <button class="meal-btn {% if current_meal=='Dinner' %}active{% endif %}"   data-meal="Dinner"    onclick="setMeal('Dinner')">🌙 Dinner</button>
-        </div>
-
-        <!-- Stats -->
-        <div class="stat-bar">
-            <div class="stat-chip"><strong id="stat-total">0</strong>Scanned</div>
-            <div class="stat-chip"><strong id="stat-new">0</strong>New ✅</div>
-            <div class="stat-chip"><strong id="stat-already">0</strong>Already</div>
-            <div class="stat-chip"><strong id="stat-err">0</strong>Errors</div>
-        </div>
-
-        <!-- Camera -->
-        <div class="scanner-card">
-            <div class="cam-wrap" id="camWrap">
-                <div class="cam-placeholder" id="camPlaceholder">
-                    <i class="fas fa-camera"></i>
-                    <span>Tap <strong>Start Scanning</strong> to open camera</span>
-                    <span class="hint">You'll be asked to allow camera access — tap <em>Allow</em> when prompted</span>
+            <div class="scanner-card">
+                <div class="cam-wrap" id="camWrap">
+                    <div class="cam-placeholder" id="camPlaceholder">
+                        <i class="fas fa-camera"></i>
+                        <span>Tap <strong>Start Scanning</strong> to open camera</span>
+                        <span class="hint">Allow camera access when prompted</span>
+                    </div>
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="scan-overlay" id="scanOverlay">
+                        <div class="scan-box"><span></span><div class="scan-line"></div></div>
+                    </div>
                 </div>
-                <video id="video" autoplay playsinline muted></video>
-                <canvas id="canvas"></canvas>
-                <div class="scan-overlay" id="scanOverlay">
-                    <div class="scan-box"><span></span><div class="scan-line"></div></div>
+                <div class="scan-ctrl">
+                    <button class="btn-start" id="startBtn" onclick="startScanner()">
+                        <i class="fas fa-camera"></i> Start Scanning
+                    </button>
+                    <button class="btn-stop" id="stopBtn" onclick="stopScanner()" style="display:none;">
+                        <i class="fas fa-stop"></i> Stop
+                    </button>
                 </div>
             </div>
-            <div class="scan-ctrl">
-                <button class="btn-start" id="startBtn" onclick="startScanner()">
-                    <i class="fas fa-camera"></i> Start Scanning
-                </button>
-                <button class="btn-stop" id="stopBtn" onclick="stopScanner()" style="display:none;">
-                    <i class="fas fa-stop"></i> Stop
-                </button>
-            </div>
         </div>
 
-        <!-- Recent scans -->
-        <div class="recent-card">
-            <div class="recent-title"><i class="fas fa-history"></i> Recent Scans</div>
-            <div id="recentList">
-                <div class="empty-scans"><i class="fas fa-qrcode"></i>No scans yet</div>
+        <!-- RIGHT: stats + recent scans -->
+        <div class="right-col">
+            <div class="stat-bar">
+                <div class="stat-chip"><strong id="stat-total">0</strong>Scanned</div>
+                <div class="stat-chip"><strong id="stat-new">0</strong>New ✅</div>
+                <div class="stat-chip"><strong id="stat-already">0</strong>Already</div>
+                <div class="stat-chip"><strong id="stat-err">0</strong>Errors</div>
+            </div>
+
+            <div class="recent-card">
+                <div class="recent-title"><i class="fas fa-history"></i> Recent Scans</div>
+                <div id="recentList">
+                    <div class="empty-scans"><i class="fas fa-qrcode"></i>No scans yet</div>
+                </div>
             </div>
         </div>
     </div>
@@ -205,34 +210,19 @@
 let currentMeal = '{{ current_meal }}';
 let scanning    = false;
 let stream      = null;
-let animFrame   = null;
+let scanInterval = null;
 let lastToken   = null;
 let cooldown    = false;
 let stats       = { total:0, newMark:0, already:0, err:0 };
 let recentScans = [];
 
-const video  = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+const video = document.getElementById('video');
 
-// Check if camera is available (requires HTTPS or localhost)
-function checkCameraSupport() {
-    const isSecure = location.protocol === 'https:' ||
-                     location.hostname === 'localhost' ||
-                     location.hostname === '127.0.0.1';
-    if (!isSecure) {
-        document.getElementById('httpsWarn').style.display = 'block';
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('startBtn').textContent = '🔒 HTTPS Required';
-        return false;
-    }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showToast('error', '❌', 'Not Supported', 'Camera API not available in this browser. Try Chrome or Safari.');
-        document.getElementById('startBtn').disabled = true;
-        return false;
-    }
-    return true;
-}
+// Small dedicated canvas for jsQR — faster processing
+const scanCanvas = document.createElement('canvas');
+const scanCtx    = scanCanvas.getContext('2d', { willReadFrequently: true });
+scanCanvas.width  = 400;
+scanCanvas.height = 400;
 
 function setMeal(meal) {
     currentMeal = meal;
@@ -241,23 +231,23 @@ function setMeal(meal) {
 }
 
 async function startScanner() {
-    if (!checkCameraSupport()) return;
+    const isSecure = location.protocol === 'https:' ||
+                     location.hostname === 'localhost' ||
+                     location.hostname === '127.0.0.1';
+    if (!isSecure) {
+        alert('Camera requires HTTPS. Use the Railway/Render URL, not a local IP.');
+        return;
+    }
 
     const btn = document.getElementById('startBtn');
     btn.textContent = 'Starting…';
     btn.disabled = true;
 
     try {
-        // Explicitly request permission — this triggers the browser prompt
         stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: { ideal: 'environment' }, // back camera on phones
-                width:  { ideal: 640 },
-                height: { ideal: 480 }
-            },
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false
         });
-
         video.srcObject = stream;
         await video.play();
 
@@ -267,128 +257,104 @@ async function startScanner() {
         btn.style.display = 'none';
         document.getElementById('stopBtn').style.display = 'block';
         scanning = true;
-        requestAnimationFrame(scanFrame);
+        startScanLoop();
 
     } catch(err) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-camera"></i> Start Scanning';
-
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            // Show clear instructions for re-enabling
-            document.getElementById('camPlaceholder').innerHTML = `
-                <i class="fas fa-ban" style="color:#ef5350;"></i>
-                <strong style="color:#c62828;">Camera permission denied</strong>
-                <span class="hint">
-                    To fix this:<br>
-                    <b>Chrome:</b> Click 🔒 in address bar → Site settings → Camera → Allow<br>
-                    <b>Safari:</b> Settings → Safari → Camera → Allow<br>
-                    Then refresh this page.
-                </span>`;
-        } else if (err.name === 'NotFoundError') {
-            document.getElementById('camPlaceholder').innerHTML = `
-                <i class="fas fa-camera-slash" style="color:#aaa;"></i>
-                <span>No camera found on this device</span>`;
+        const ph = document.getElementById('camPlaceholder');
+        if (err.name === 'NotAllowedError') {
+            ph.innerHTML = `<i class="fas fa-ban" style="color:#ef5350;"></i>
+                <strong style="color:#c62828;">Permission denied</strong>
+                <span class="hint">Chrome: click 🔒 → Camera → Allow → refresh<br>
+                Safari: Settings → Safari → Camera → Allow</span>`;
         } else {
-            document.getElementById('camPlaceholder').innerHTML = `
-                <i class="fas fa-exclamation-triangle" style="color:#FF9800;"></i>
-                <span>Camera error: ${err.message}</span>
-                <span class="hint">Try refreshing the page</span>`;
+            ph.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#FF9800;"></i>
+                <span>Camera error: ${err.message}</span>`;
         }
-        document.getElementById('camPlaceholder').style.display = 'flex';
+        ph.style.display = 'flex';
     }
 }
 
 function stopScanner() {
     scanning = false;
+    if (scanInterval) clearInterval(scanInterval);
     if (stream) stream.getTracks().forEach(t => t.stop());
     video.style.display = 'none';
+    document.getElementById('scanOverlay').style.display = 'none';
     document.getElementById('camPlaceholder').style.display = 'flex';
     document.getElementById('camPlaceholder').innerHTML = `
-        <i class="fas fa-camera"></i>
-        <span>Camera stopped</span>
+        <i class="fas fa-camera"></i><span>Camera stopped</span>
         <span class="hint">Tap Start Scanning to resume</span>`;
-    document.getElementById('scanOverlay').style.display = 'none';
-    document.getElementById('startBtn').style.display  = 'block';
+    document.getElementById('startBtn').style.display   = 'block';
     document.getElementById('startBtn').disabled = false;
     document.getElementById('startBtn').innerHTML = '<i class="fas fa-camera"></i> Start Scanning';
-    document.getElementById('stopBtn').style.display   = 'none';
-    if (animFrame) cancelAnimationFrame(animFrame);
-    if (scanInterval) clearInterval(scanInterval);
+    document.getElementById('stopBtn').style.display    = 'none';
 }
 
-let scanInterval = null;
-
-// Dedicated small canvas for QR processing — 400px wide is plenty for jsQR
-const scanCanvas = document.createElement('canvas');
-const scanCtx    = scanCanvas.getContext('2d', { willReadFrequently: true });
-scanCanvas.width  = 400;
-scanCanvas.height = 400;
-
-function scanFrame() {
+function startScanLoop() {
+    if (scanInterval) clearInterval(scanInterval);
     scanInterval = setInterval(() => {
-        if (!scanning) { clearInterval(scanInterval); return; }
-        if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) return;
+        if (!scanning || video.readyState < 2 || video.videoWidth === 0) return;
 
-        // Scale down to 400×400 — jsQR is MUCH faster on smaller images
+        // Scale down for speed
         const scale = Math.min(400 / video.videoWidth, 400 / video.videoHeight);
         const w = Math.floor(video.videoWidth  * scale);
         const h = Math.floor(video.videoHeight * scale);
         scanCtx.drawImage(video, 0, 0, w, h);
         const imgData = scanCtx.getImageData(0, 0, w, h);
-
-        const code = jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
+        const code    = jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
 
         if (code && code.data && !cooldown) {
-            console.log('[QR] Detected:', code.data);
+            console.log('[QR] Raw data:', code.data);
+            let token = null;
             try {
-                let token;
-                if (code.data.includes('token=')) {
-                    token = new URL(code.data).searchParams.get('token');
-                } else {
-                    token = code.data;
-                }
-                if (token && token !== lastToken) {
-                    lastToken = token;
-                    processQR(token);
-                }
+                // Try parsing as URL first
+                const url = new URL(code.data);
+                token = url.searchParams.get('token');
             } catch(e) {
-                if (code.data && code.data !== lastToken) {
-                    lastToken = code.data;
-                    processQR(code.data);
-                }
+                // Maybe it's just the raw token
+                token = code.data;
+            }
+            console.log('[QR] Token:', token);
+            if (token && token !== lastToken) {
+                lastToken = token;
+                processQR(token);
             }
         }
-    }, 300); // every 300ms — fast enough, not overloading mobile CPU
+    }, 300);
 }
 
 function processQR(token) {
     cooldown = true;
-    if (navigator.vibrate) navigator.vibrate(100);
+    if (navigator.vibrate) navigator.vibrate([100]);
 
-    fetch(`/admin/scan/mark?token=${encodeURIComponent(token)}&meal=${currentMeal}`)
+    fetch(`/admin/scan/mark?token=${encodeURIComponent(token)}&meal=${encodeURIComponent(currentMeal)}`)
     .then(r => r.json())
     .then(data => {
+        console.log('[QR] Server response:', data);
         stats.total++;
         if (!data.ok) {
             stats.err++;
             showToast('error', '❌', 'Error', data.error || 'Could not mark attendance');
-            addRecent(null, data.error, 'err');
+            addRecent('?', data.error || 'Error', 'err');
         } else if (data.already) {
             stats.already++;
-            showToast('warning', '⚠️', data.username, `Already marked as ${data.status} for ${currentMeal}`);
+            showToast('warning', '⚠️', data.username, `Already ${data.status} for ${currentMeal}`);
             addRecent(data.username, `${data.roll_no} · Already ${data.status}`, 'warn');
         } else {
             stats.newMark++;
-            const guests = data.guest_count > 0 ? ` · +${data.guest_count} guest(s)` : '';
-            showToast('success', '✅', data.username, `${data.food_type} ${currentMeal} marked present${guests}`);
-            addRecent(data.username, `${data.roll_no} · ${data.food_type}${guests}`, 'ok');
+            const g = data.guest_count > 0 ? ` +${data.guest_count} guest` : '';
+            showToast('success', '✅', data.username, `${data.food_type} ${currentMeal} marked present${g}`);
+            addRecent(data.username, `${data.roll_no} · ${data.food_type}${g}`, 'ok');
         }
         updateStats();
         setTimeout(() => { lastToken = null; cooldown = false; }, 2500);
     })
-    .catch(() => {
+    .catch(err => {
+        console.error('[QR] Fetch error:', err);
         stats.err++; updateStats();
-        showToast('error', '❌', 'Network Error', 'Check connection and try again');
+        showToast('error', '❌', 'Network Error', err.message);
         setTimeout(() => { lastToken = null; cooldown = false; }, 2500);
     });
 }
@@ -401,17 +367,16 @@ function showToast(type, icon, name, detail) {
     document.getElementById('toastDetail').textContent = detail;
     t.classList.add('show');
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => t.classList.remove('show'), 3500);
+    t._timer = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
 function addRecent(name, sub, type) {
     const now = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
     recentScans.unshift({ name: name || '?', sub, type, time: now });
-    if (recentScans.length > 15) recentScans.pop();
-    const el = document.getElementById('recentList');
-    el.innerHTML = recentScans.map(s => `
+    if (recentScans.length > 20) recentScans.pop();
+    document.getElementById('recentList').innerHTML = recentScans.map(s => `
         <div class="scan-item">
-            <div class="scan-avatar ${s.type !== 'ok' ? s.type : ''}">${s.name[0].toUpperCase()}</div>
+            <div class="scan-avatar ${s.type !== 'ok' ? s.type : ''}">${(s.name[0]||'?').toUpperCase()}</div>
             <div class="scan-info">
                 <div class="scan-name">${s.name}</div>
                 <div class="scan-sub">${s.sub}</div>
@@ -426,9 +391,7 @@ function updateStats() {
     document.getElementById('stat-already').textContent = stats.already;
     document.getElementById('stat-err').textContent     = stats.err;
 }
-
-// Auto-check on load
-checkCameraSupport();
 </script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
