@@ -6,6 +6,112 @@
     <title>Meal Booking - IntelliMess</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Enhanced Booking UI */
+        .booking-container {
+            max-width: 650px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .booking-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            border: 1px solid #f0f0f0;
+        }
+        .booking-card h2 {
+            color: #1a1a2e;
+            font-size: 28px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-weight: 700;
+        }
+        .booking-card h2 i {
+            color: #2e7d32;
+            margin-right: 8px;
+        }
+        .booking-form-group {
+            margin-bottom: 24px;
+        }
+        .booking-form-group label {
+            display: block;
+            color: #444;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14.5px;
+        }
+        .booking-form select,
+        .booking-form input[type="date"],
+        .booking-form input[type="number"] {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.25s ease;
+            background: #fdfdfd;
+            color: #333;
+        }
+        .booking-form select:focus,
+        .booking-form input[type="date"]:focus,
+        .booking-form input[type="number"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.15);
+        }
+        .guest-box {
+            background: linear-gradient(to bottom right, #f8fff9, #ffffff);
+            border: 1px solid #e0f2f1;
+            padding: 24px;
+            border-radius: 16px;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.02) inset;
+        }
+        .guest-toggle-label {
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            font-size: 16px;
+            color: #2e7d32;
+            cursor: pointer;
+            user-select: none;
+        }
+        .guest-toggle-label input {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            accent-color: #2e7d32;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #4CAF50, #2e7d32);
+            color: #ffffff;
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            border-radius: 12px;
+            margin-top: 15px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+        }
+        #menu_preview_section {
+            background: linear-gradient(135deg, #f0f8ff, #e3f2fd);
+            border: 1px solid #bbdefb;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            box-shadow: 0 4px 12px rgba(25, 118, 210, 0.05);
+        }
+    </style>
 </head>
 <body>
 <div class="dashboard-wrapper">
@@ -50,44 +156,69 @@
 
                 <div class="booking-form-group">
                     <label for="date">Booking Date</label>
-                    <input type="date" name="date" id="date" required>
+                    <input type="date" name="date" id="date" required onchange="updateMenuPreview()">
+                </div>
+
+                <!-- Menu Preview Section -->
+                <div id="menu_preview_section" style="background:#f0f8ff; border:1px solid #bbdefb; padding:15px; border-radius:10px; margin-top:15px; margin-bottom:15px; display:none;">
+                    <h4 style="margin-bottom:8px; font-size:14px; color:#1976d2;"><i class="fas fa-utensils"></i> Menu Preview</h4>
+                    <p id="menu_preview_text" style="font-size:14px; color:#333; margin:0;">Select a date and meal to see what's on the menu.</p>
                 </div>
 
                 <!-- Guest Booking Section -->
-                <div class="booking-form-group" style="background:#f9f9f9; border:1px solid #e0e0e0; padding:15px; border-radius:10px; margin-top:10px;">
-                    <label style="font-weight:600; font-size:15px;">
+                <div class="booking-form-group guest-box">
+                    <label class="guest-toggle-label">
                         <input type="checkbox" name="bring_guest" id="bring_guest" onchange="toggleGuest(this)">
-                        &nbsp;<i class="fas fa-users"></i> Bring a Guest
+                        <i class="fas fa-users"></i>&nbsp; Bring a Guest
                     </label>
 
                     <div id="guest_section" style="display:none; margin-top:15px;">
                         <div class="booking-form-group">
                             <label for="guest_count">Number of Guests (max 10)</label>
                             <input type="number" name="guest_count" id="guest_count"
-                                   min="1" max="10" value="1"
+                                   min="1" max="10" value="1" onchange="syncGuestCounts()"
                                    style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
                         </div>
-                        <div class="booking-form-group">
-                            <label for="guest_food_type">Guest Food Type</label>
-                            <select name="guest_food_type" id="guest_food_type"
-                                    style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px;">
-                                <option value="Veg">Veg</option>
-                                <option value="Non-Veg">Non-Veg</option>
-                            </select>
+
+                        <div style="display:flex; gap:12px; margin-top:10px;">
+                            <div style="flex:1;">
+                                <label for="guest_veg_count" style="font-size:13px; font-weight:600; color:#2e7d32;">
+                                    🌿 Veg Guests
+                                </label>
+                                <input type="number" name="guest_veg_count" id="guest_veg_count"
+                                       min="0" max="10" value="1" onchange="validateGuestSplit()"
+                                       style="width:100%; padding:10px; border:2px solid #c8e6c9; border-radius:8px; background:#f1fff1;">
+                            </div>
+                            <div style="flex:1;">
+                                <label for="guest_nonveg_count" style="font-size:13px; font-weight:600; color:#c62828;">
+                                    🍗 Non-Veg Guests
+                                </label>
+                                <input type="number" name="guest_nonveg_count" id="guest_nonveg_count"
+                                       min="0" max="10" value="0" onchange="validateGuestSplit()"
+                                       style="width:100%; padding:10px; border:2px solid #ffcdd2; border-radius:8px; background:#fff8f8;">
+                            </div>
                         </div>
+
+                        <p id="guest_split_status" style="font-size:13px; margin-top:8px; color:#4CAF50; font-weight:600;">
+                            ✓ 1 Veg + 0 Non-Veg = 1 guest(s)
+                        </p>
+                        <p id="guest_split_error" style="font-size:13px; margin-top:4px; color:#e53935; font-weight:600; display:none;">
+                            ⚠ Veg + Non-Veg must equal total guests!
+                        </p>
+
                         <p style="font-size:13px; color:#888; margin-top:5px;">
                             <i class="fas fa-info-circle"></i> Guest meals are counted in preparation totals.
                         </p>
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-check"></i> Book Meal
+                <button type="submit" class="btn btn-primary" id="bookBtn">
+                    <i class="fas fa-check-circle"></i> Confirm Booking
                 </button>
             </form>
 
-            <div style="text-align:center; margin-top:20px;">
-                <a href="/student" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+            <div style="text-align:center; margin-top:25px;">
+                <a href="/student" class="back-link" style="color:#666; font-weight:600; text-decoration:none;"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
             </div>
         </div>
     </div>
@@ -105,7 +236,96 @@
 
     function toggleGuest(cb) {
         document.getElementById("guest_section").style.display = cb.checked ? "block" : "none";
+        if (cb.checked) syncGuestCounts();
     }
+
+    function syncGuestCounts() {
+        const total = parseInt(document.getElementById("guest_count").value) || 1;
+        const vegEl = document.getElementById("guest_veg_count");
+        const nvEl = document.getElementById("guest_nonveg_count");
+        vegEl.max = total;
+        nvEl.max = total;
+        // Auto-set: all veg by default
+        vegEl.value = total;
+        nvEl.value = 0;
+        validateGuestSplit();
+    }
+
+    const menuDataRaw = '{{ menu_data|tojson|safe if menu_data else "{}" }}';
+    const menuData = JSON.parse(menuDataRaw);
+    const todayName = "{{ today_name }}";
+    const tomorrowName = "{{ tomorrow_name }}";
+
+    function updateMenuPreview() {
+        const mealVal = document.getElementById("meal").value;
+        const dateVal = document.getElementById("date").value;
+        const previewEl = document.getElementById("menu_preview_section");
+        const textEl = document.getElementById("menu_preview_text");
+
+        if (!mealVal || !dateVal || !previewEl) return;
+
+        const todayStr = formatDate(today);
+        const tomorrowStr = formatDate(tomorrow);
+        
+        let selectedDayName = null;
+        if (dateVal === todayStr) selectedDayName = todayName;
+        else if (dateVal === tomorrowStr) selectedDayName = tomorrowName;
+
+        if (selectedDayName && menuData[selectedDayName] && menuData[selectedDayName][mealVal]) {
+            const dishes = menuData[selectedDayName][mealVal];
+            if (dishes.length > 0) {
+                textEl.innerHTML = "<strong>" + mealVal + " (" + selectedDayName + "):</strong> " + dishes.join(", ");
+                previewEl.style.display = "block";
+            } else {
+                textEl.innerHTML = "<em>No menu set for this meal yet.</em>";
+                previewEl.style.display = "block";
+            }
+        } else {
+            textEl.innerHTML = "<em>No menu data available.</em>";
+            previewEl.style.display = "block";
+        }
+    }
+
+    document.getElementById("meal").addEventListener("change", updateMenuPreview);
+    document.getElementById("date").addEventListener("change", updateMenuPreview);
+    
+    // Initial display
+    setTimeout(updateMenuPreview, 100);
+
+    function validateGuestSplit() {
+        const total = parseInt(document.getElementById("guest_count").value) || 1;
+        const veg = parseInt(document.getElementById("guest_veg_count").value) || 0;
+        const nv = parseInt(document.getElementById("guest_nonveg_count").value) || 0;
+        const sum = veg + nv;
+        const statusEl = document.getElementById("guest_split_status");
+        const errorEl = document.getElementById("guest_split_error");
+        const btn = document.getElementById("bookBtn");
+        if (sum === total) {
+            statusEl.style.display = "block";
+            statusEl.textContent = "✓ " + veg + " Veg + " + nv + " Non-Veg = " + total + " guest(s)";
+            errorEl.style.display = "none";
+            btn.disabled = false;
+        } else {
+            statusEl.style.display = "none";
+            errorEl.style.display = "block";
+            errorEl.textContent = "⚠ Veg (" + veg + ") + Non-Veg (" + nv + ") = " + sum + " — must equal " + total + " guests!";
+            btn.disabled = true;
+        }
+    }
+
+    // Prevent form submit if split is wrong
+    document.querySelector('.booking-form').addEventListener('submit', function(e) {
+        const guestCb = document.getElementById("bring_guest");
+        if (guestCb.checked) {
+            const total = parseInt(document.getElementById("guest_count").value) || 1;
+            const veg = parseInt(document.getElementById("guest_veg_count").value) || 0;
+            const nv = parseInt(document.getElementById("guest_nonveg_count").value) || 0;
+            if (veg + nv !== total) {
+                e.preventDefault();
+                alert("Veg + Non-Veg guests must equal the total guest count!");
+            }
+        }
+    });
 </script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

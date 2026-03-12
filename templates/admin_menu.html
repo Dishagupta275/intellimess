@@ -69,6 +69,7 @@
     <!-- ADD DISH FORM -->
     {% set pre_dish = request.args.get('dish', '') %}
     {% set pre_meal = request.args.get('meal', '') %}
+    {% set pre_day = request.args.get('day', '') %}
 
     <div class="add-card" {% if pre_dish %}style="border:2px solid #4CAF50;box-shadow:0 0 0 4px rgba(76,175,80,.15);"{% endif %}>
       <h3>
@@ -79,21 +80,22 @@
         </span>
         {% endif %}
       </h3>
-      <form method="POST" action="/admin/menu/add">
+      <form method="POST" action="/admin/menu/add" id="addDishForm">
         <div class="add-row">
 
           <div class="add-field">
             <label>Day <span style="color:#e53935;">*</span></label>
-            <select name="day" required>
+            <select name="day" id="daySelect" required onchange="updateDisplacement()">
               {% for d in days %}
-              <option value="{{ d }}">{{ d }}</option>
+              <option value="{{ d }}" {% if d == pre_day %}selected{% endif %}>{{ d }}</option>
               {% endfor %}
             </select>
           </div>
 
           <div class="add-field">
             <label>Meal</label>
-            <select name="meal" required {% if pre_meal %}style="border-color:#4CAF50;background:#f1fff1;"{% endif %}>
+            <select name="meal" id="mealSelect" required onchange="updateDisplacement()"
+                    {% if pre_meal %}style="border-color:#4CAF50;background:#f1fff1;"{% endif %}>
               {% for m in meals %}
               <option value="{{ m }}" {% if m == pre_meal %}selected{% endif %}>{{ m }}</option>
               {% endfor %}
@@ -126,6 +128,35 @@
 
           <button type="submit" class="add-btn"><i class="fas fa-plus"></i> Add to Menu</button>
         </div>
+
+        <!-- DISPLACEMENT PANEL — shows when adding from poll/suggestion -->
+        {% if pre_dish %}
+        <div id="displacement_panel" style="margin-top:18px; padding:18px; background:#fff8f0; border:2px solid #ffe0b2; border-radius:12px;">
+          <div style="font-size:14px; font-weight:700; color:#e65100; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-exchange-alt"></i> Want to replace a dish from this slot?
+          </div>
+          <p style="font-size:12px; color:#888; margin-bottom:12px;">
+            Optionally remove an existing dish when adding <b>{{ pre_dish }}</b>. Leave unchecked to keep all current dishes.
+          </p>
+
+          <div id="displacement_dishes">
+            <!-- Populated by JS based on day+meal selection -->
+          </div>
+
+          <div style="margin-top:14px; display:flex; gap:20px; align-items:center;">
+            <label style="font-size:13px; font-weight:600; color:#555; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="change_type" value="temporary" checked>
+              <span style="background:#fff3cd; color:#856404; padding:3px 10px; border-radius:10px; font-size:12px;">⏳ Temporary</span>
+              <span style="font-size:11px; color:#aaa;">Reverts automatically</span>
+            </label>
+            <label style="font-size:13px; font-weight:600; color:#555; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="change_type" value="permanent">
+              <span style="background:#e8f5e9; color:#2e7d32; padding:3px 10px; border-radius:10px; font-size:12px;">✓ Permanent</span>
+              <span style="font-size:11px; color:#aaa;">Stays on menu</span>
+            </label>
+          </div>
+        </div>
+        {% endif %}
       </form>
     </div>
 
@@ -170,6 +201,9 @@
   </div>
 </div>
 <script>
+// Menu grid data for displacement panel
+const menuGrid = {{ menu_grid|tojson }};
+
 // If we arrived with a pre-filled dish from suggestions:
 (function() {
   const params = new URLSearchParams(window.location.search);
@@ -191,7 +225,34 @@
     // Not in dropdown — clear the dropdown selection so the text input is used
     if (sel) sel.value = '';
   }
+
+  // Populate displacement panel
+  updateDisplacement();
 })();
+
+function updateDisplacement() {
+  const panel = document.getElementById('displacement_dishes');
+  if (!panel) return;
+
+  const day = document.getElementById('daySelect').value;
+  const meal = document.getElementById('mealSelect').value;
+  const dishes = (menuGrid[day] && menuGrid[day][meal]) ? menuGrid[day][meal] : [];
+
+  if (dishes.length === 0) {
+    panel.innerHTML = '<p style="font-size:12px;color:#aaa;font-style:italic;">No dishes in this slot yet — nothing to replace.</p>';
+    return;
+  }
+
+  let html = '<div style="font-size:12px;color:#666;margin-bottom:8px;">Current dishes in <b>' + day + ' ' + meal + '</b>:</div>';
+  dishes.forEach(function(d) {
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:6px;cursor:pointer;">' +
+      '<input type="checkbox" name="remove_dish_ids" value="' + d.dish_id + '|' + d.menu_id + '">' +
+      '<span style="font-size:13px;color:#333;">' + d.dish_name + '</span>' +
+      '<span style="font-size:11px;color:#ef5350;margin-left:auto;">Remove</span>' +
+      '</label>';
+  });
+  panel.innerHTML = html;
+}
 </script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

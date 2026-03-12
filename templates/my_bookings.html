@@ -115,9 +115,22 @@
                         <td>{{ b.food_type }}</td>
                         <td>
                             {% if b.guest_count and b.guest_count > 0 %}
+                                {% if b.guest_food_type and 'V,' in b.guest_food_type and 'NV' in b.guest_food_type %}
+                                <span style="font-size:12px;">
+                                    <i class="fas fa-users" style="color:#1565c0;"></i>
+                                    {{ b.guest_count }} guest{{ 's' if b.guest_count > 1 else '' }}
+                                    <span style="background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:10px;font-size:11px;margin-left:3px;">
+                                        🌿 {{ b.guest_food_type.split('V,')[0] }}
+                                    </span>
+                                    <span style="background:#fce4ec;color:#c62828;padding:1px 6px;border-radius:10px;font-size:11px;">
+                                        🍗 {{ b.guest_food_type.split('V,')[1].replace('NV','') }}
+                                    </span>
+                                </span>
+                                {% else %}
                                 <span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:20px;font-size:11px;">
                                     <i class="fas fa-users"></i> {{ b.guest_count }} ({{ b.guest_food_type }})
                                 </span>
+                                {% endif %}
                             {% else %}—{% endif %}
                         </td>
                         <td>

@@ -542,7 +542,40 @@ def meal_calendar():
 def booking_page():
     if 'user_id' not in session:
         return redirect('/login')
-    return render_template("booking.html")
+
+    # Fetch menu data for the booking form preview
+    now = now_ist()
+    today_name = now.strftime('%A')
+    tomorrow_name = (now + timedelta(days=1)).strftime('%A')
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("""
+        SELECT wm.day_of_week, wm.meal, d.dish_name
+        FROM weekly_menu wm
+        JOIN menu_items mi ON wm.id = mi.weekly_menu_id
+        JOIN dishes d ON mi.dish_id = d.id
+        WHERE wm.day_of_week IN (%s, %s)
+        ORDER BY wm.day_of_week, wm.meal, d.dish_name
+    """, (today_name, tomorrow_name))
+    rows = cursor.fetchall() or []
+    cursor.close(); conn.close()
+
+    # Build nested dict: { "Monday": { "Breakfast": ["Poha", "Tea"], ... }, ... }
+    menu_data = {}
+    for r in rows:
+        day = r['day_of_week']
+        meal = r['meal']
+        if day not in menu_data:
+            menu_data[day] = {}
+        if meal not in menu_data[day]:
+            menu_data[day][meal] = []
+        menu_data[day][meal].append(r['dish_name'])
+
+    return render_template("booking.html",
+        menu_data=menu_data,
+        today_name=today_name,
+        tomorrow_name=tomorrow_name)
 
 @app.route('/book', methods=['POST'])
 def book():
@@ -564,7 +597,19 @@ def book():
             guest_count = 0
         if guest_count < 1 or guest_count > 10:
             return "Invalid guest count. Must be 1–10."
-        guest_food_type = request.form.get('guest_food_type', food_type)
+        # Per-guest veg/non-veg split
+        try:
+            guest_veg = int(request.form.get('guest_veg_count', 0))
+            guest_nv = int(request.form.get('guest_nonveg_count', 0))
+        except ValueError:
+            guest_veg = guest_count
+            guest_nv = 0
+        if guest_veg + guest_nv != guest_count:
+            return "Veg + Non-Veg guests must equal total guest count."
+        if guest_veg < 0 or guest_nv < 0:
+            return "Guest counts cannot be negative."
+        # Store as "3V,2NV" format in guest_food_type column
+        guest_food_type = f"{guest_veg}V,{guest_nv}NV"
 
     now = now_ist()
     today = now.date()
@@ -973,45 +1018,98 @@ def vote_poll():
 # ================================================================
 def analyze_sentiment(text):
     """
-    Rule-based sentiment scorer — no external ML library needed.
-    Returns: 'Positive', 'Negative', or 'Neutral'  + a score -1..+1
+    Enhanced rule-based sentiment scorer for food feedback.
+    Supports: expanded word lists, bigrams, intensity modifiers, 2-word negation window.
+    Returns: 'Positive', 'Negative', or 'Neutral'  +  a score -1..+1
     """
     if not text or not text.strip():
         return 'Neutral', 0.0
 
     text_lower = text.lower()
 
-    positive_words = [
-        'good','great','excellent','amazing','delicious','tasty','loved',
-        'fantastic','wonderful','nice','perfect','enjoyed','fresh','hot',
-        'crispy','yummy','best','awesome','superb','happy','satisfied',
-        'well','better','clean','quality','flavour','flavor','rich','soft'
+    # --- Positive & Negative bigrams (checked before single words) ---
+    positive_phrases = [
+        'well cooked','well made','very good','really good','so good','very tasty',
+        'really tasty','perfectly cooked','well seasoned','well prepared',
+        'super tasty','finger licking','loved it','really liked','quite good',
+        'pretty good','nicely done','highly recommend','top notch','really enjoyed',
+        'fresh and hot','fresh and tasty','perfectly spiced','worth it',
     ]
-    negative_words = [
-        'bad','poor','terrible','awful','horrible','disgusting','cold',
-        'stale','overcooked','undercooked','oily','bland','worst','hate',
-        'unhappy','disappointed','tasteless','hard','burnt','raw','dirty',
-        'spicy','less','no','not','never','complaint','issue','problem',
-        'delay','late','slow','waste','watery'
+    negative_phrases = [
+        'not good','not fresh','not tasty','too spicy','too salty','too oily',
+        'too cold','too hard','not cooked','half cooked','under cooked','over cooked',
+        'very bad','really bad','so bad','not worth','waste of','didn\'t like',
+        'don\'t like','could be better','needs improvement','not satisfying',
+        'left hungry','not enough','very disappointing','really disappointing',
+        'food poisoning','stomach ache','hygiene issue','not clean',
     ]
-    negation_words = ['not','no','never','neither','nor','without']
+
+    # Count phrase matches first (remove matched phrases after counting)
+    score = 0
+    for p in positive_phrases:
+        if p in text_lower:
+            score += 2
+            text_lower = text_lower.replace(p, ' ', 1)
+    for p in negative_phrases:
+        if p in text_lower:
+            score -= 2
+            text_lower = text_lower.replace(p, ' ', 1)
+
+    # --- Single word lists ---
+    positive_words = {
+        'good','great','excellent','amazing','delicious','tasty','loved','love','liked',
+        'fantastic','wonderful','nice','perfect','enjoyed','fresh','hot','crispy','yummy',
+        'best','awesome','superb','happy','satisfied','clean','quality','flavour','flavor',
+        'rich','soft','juicy','aromatic','hearty','wholesome','tender','smooth','creamy',
+        'crunchy','divine','heavenly','brilliant','fabulous','outstanding','recommend',
+        'refreshing','balanced','filling','comforting','warm','generous','plenty','enough',
+        'improved','better','upgrade','impressive',
+    }
+    negative_words = {
+        'bad','poor','terrible','awful','horrible','disgusting','cold','stale','overcooked',
+        'undercooked','oily','bland','worst','hate','hated','unhappy','disappointed',
+        'tasteless','hard','burnt','raw','dirty','watery','soggy','rubbery','chewy',
+        'complaint','issue','problem','delay','late','slow','waste','sour','rancid',
+        'uncooked','smelly','rotten','greasy','flavorless','unpleasant','mediocre',
+        'inedible','pathetic','dreadful','nasty','gross','lousy','subpar','lacking',
+        'insufficient','tiny','small',
+    }
+    negation_words = {'not','no','never','neither','nor','without','barely','hardly',
+                      "wasn't","isn't","doesn't","don't","didn't","couldn't","shouldn't"}
+    intensifiers = {'very','really','extremely','super','quite','absolutely','totally',
+                    'incredibly','highly','especially','particularly','so'}
 
     words = text_lower.split()
-    score = 0
+    cleaned = [w.strip('.,!?;:()[]"\'') for w in words]
+
     i = 0
-    while i < len(words):
-        word = words[i].strip('.,!?;:')
-        negated = (i > 0 and words[i-1].strip('.,!?;:') in negation_words)
+    while i < len(cleaned):
+        word = cleaned[i]
+        # Check for negation within 2-word window
+        negated = False
+        if i > 0 and cleaned[i-1] in negation_words:
+            negated = True
+        elif i > 1 and cleaned[i-2] in negation_words:
+            negated = True
+
+        # Check for intensity
+        intense = False
+        if i > 0 and cleaned[i-1] in intensifiers:
+            intense = True
+
+        weight = 1.5 if intense else 1.0
+
         if word in positive_words:
-            score += -1 if negated else +1
+            score += (-weight) if negated else weight
         elif word in negative_words:
-            score += +1 if negated else -1
+            score += weight if negated else (-weight)
         i += 1
 
-    if score > 0:
-        return 'Positive', min(score / 3, 1.0)
-    elif score < 0:
-        return 'Negative', max(score / 3, -1.0)
+    # Normalize to -1..+1
+    if score > 0.5:
+        return 'Positive', min(round(score / 4, 2), 1.0)
+    elif score < -0.5:
+        return 'Negative', max(round(score / 4, 2), -1.0)
     else:
         return 'Neutral', 0.0
 
@@ -1049,16 +1147,36 @@ def admin():
             COALESCE(SUM(guest_count), 0) as total_guests,
             SUM(CASE WHEN food_type='Veg' THEN 1 ELSE 0 END) as veg_students,
             SUM(CASE WHEN food_type='Non-Veg' THEN 1 ELSE 0 END) as nonveg_students,
-            SUM(CASE WHEN guest_food_type='Veg' THEN COALESCE(guest_count,0) ELSE 0 END) as veg_guests,
-            SUM(CASE WHEN guest_food_type='Non-Veg' THEN COALESCE(guest_count,0) ELSE 0 END) as nonveg_guests
+            guest_food_type, guest_count as gc
         FROM bookings WHERE meal=%s AND booking_date=%s
+        GROUP BY id
     """, (next_meal, today_date))
-    ms = cursor.fetchone()
-    student_count = ms['student_count'] or 0
-    total_guests = int(ms['total_guests'] or 0)
+    booking_rows = cursor.fetchall() or []
+    student_count = len(booking_rows)
+    total_guests = sum(int(r['total_guests'] or 0) for r in booking_rows)
+    veg_students = sum(1 for r in booking_rows if r['veg_students'])
+    nonveg_students = sum(1 for r in booking_rows if r['nonveg_students'])
+    veg_guests = 0
+    nonveg_guests = 0
+    for r in booking_rows:
+        gft = r.get('guest_food_type') or ''
+        gc = int(r.get('gc') or 0)
+        if 'V,' in gft and 'NV' in gft:
+            # New format: "3V,2NV"
+            import re as _re
+            m = _re.match(r'(\d+)V,(\d+)NV', gft)
+            if m:
+                veg_guests += int(m.group(1))
+                nonveg_guests += int(m.group(2))
+            else:
+                veg_guests += gc
+        elif gft == 'Veg':
+            veg_guests += gc
+        elif gft == 'Non-Veg':
+            nonveg_guests += gc
     next_meal_count = student_count + total_guests
-    veg_count = int(ms['veg_students'] or 0) + int(ms['veg_guests'] or 0)
-    nonveg_count = int(ms['nonveg_students'] or 0) + int(ms['nonveg_guests'] or 0)
+    veg_count = veg_students + veg_guests
+    nonveg_count = nonveg_students + nonveg_guests
 
     # lightweight queries only
     cursor.execute("SELECT COUNT(*) as total FROM bookings")
@@ -1119,6 +1237,7 @@ def admin():
                    'cnt':  r['cnt']} for r in top_badge_rows]
 
     # ── Comeback suggestions (high-rated dishes not served in 14+ days) ──
+    # Exclude dishes currently on the weekly menu to avoid false comebacks (e.g. Curd)
     cursor.execute("""
         SELECT d.dish_name,
                ROUND(AVG(f.rating), 1) as avg_rating,
@@ -1127,6 +1246,11 @@ def admin():
         FROM feedback f
         JOIN dishes d ON f.dish_id = d.id
         JOIN bookings b ON f.booking_id = b.id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM menu_items mi
+            JOIN weekly_menu wm ON mi.weekly_menu_id = wm.id
+            WHERE mi.dish_id = d.id
+        )
         GROUP BY d.dish_name
         HAVING avg_rating >= 4.0
            AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
@@ -1585,6 +1709,58 @@ def admin_menu_add():
     if not cursor.fetchone():
         cursor3.execute("INSERT INTO menu_items (weekly_menu_id, dish_id) VALUES (%s,%s)", (menu_id, did))
         conn.commit()
+
+    # Handle displacement — remove checked dishes from this slot
+    remove_ids = request.form.getlist('remove_dish_ids')
+    change_type = request.form.get('change_type', 'permanent')
+
+    if remove_ids:
+        # Ensure temp_menu_changes table exists for tracking temporary removals
+        if change_type == 'temporary':
+            try:
+                cursor3.execute("""
+                    CREATE TABLE IF NOT EXISTS temp_menu_changes (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        weekly_menu_id INT NOT NULL,
+                        dish_id INT NOT NULL,
+                        action VARCHAR(10) DEFAULT 'removed',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        reverted TINYINT(1) DEFAULT 0
+                    )
+                """)
+                conn.commit()
+            except Exception:
+                pass
+
+        for rid in remove_ids:
+            parts = rid.split('|')
+            if len(parts) == 2:
+                r_dish_id, r_menu_id = int(parts[0]), int(parts[1])
+                # Remove from menu_items
+                cursor3.execute("DELETE FROM menu_items WHERE weekly_menu_id=%s AND dish_id=%s",
+                               (r_menu_id, r_dish_id))
+                conn.commit()
+                # If temporary, record so it can be reverted later
+                if change_type == 'temporary':
+                    try:
+                        cursor3.execute("""
+                            INSERT INTO temp_menu_changes (weekly_menu_id, dish_id, action)
+                            VALUES (%s, %s, 'removed')
+                        """, (r_menu_id, r_dish_id))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+    # If the new dish is temporary, also record the addition
+    if change_type == 'temporary' and remove_ids:
+        try:
+            cursor3.execute("""
+                INSERT INTO temp_menu_changes (weekly_menu_id, dish_id, action)
+                VALUES (%s, %s, 'added')
+            """, (menu_id, did))
+            conn.commit()
+        except Exception:
+            pass
 
     cursor3.close(); cursor.close(); conn.close()
     return redirect('/admin/menu')
@@ -2256,6 +2432,36 @@ def admin_analytics():
     fb_bk = cursor.fetchone()['fb'] or 0
     feedback_rate = round(fb_bk / total_bk * 100, 1)
 
+    # ── Heatmap data ──
+    cursor.execute("""
+        SELECT DAYNAME(booking_date) as day_name, meal, COUNT(*) as count
+        FROM bookings GROUP BY DAYNAME(booking_date), meal
+    """)
+    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
+    heatmap = {d: {m: 0 for m in meals_order} for d in days_order}
+    heatmap_max = 1
+    for row in cursor.fetchall():
+        d, m, c = row['day_name'], row['meal'], row['count']
+        if d in heatmap and m in heatmap[d]:
+            heatmap[d][m] = c
+            if c > heatmap_max: heatmap_max = c
+
+    # ── Comeback suggestions — exclude dishes on current weekly menu ──
+    cursor.execute("""
+        SELECT d.dish_name, AVG(f.rating) as avg_rating, MAX(b.booking_date) as last_served
+        FROM feedback f JOIN dishes d ON f.dish_id = d.id JOIN bookings b ON f.booking_id = b.id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM menu_items mi
+            JOIN weekly_menu wm ON mi.weekly_menu_id = wm.id
+            WHERE mi.dish_id = d.id
+        )
+        GROUP BY d.dish_name
+        HAVING avg_rating >= 4.0 AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        ORDER BY avg_rating DESC
+    """)
+    comeback_dishes = cursor.fetchall() or []
+
     cursor.close(); conn.close()
     dish_stats, overall = _get_dish_stats_and_sentiment()
 
@@ -2263,7 +2469,10 @@ def admin_analytics():
         booking_trend=booking_trend, meal_stats=meal_stats,
         food_stats=food_stats, rating_dist=rating_dist,
         meal_satisfaction=meal_satisfaction, feedback_rate=feedback_rate,
-        dish_stats=dish_stats, overall=overall)
+        dish_stats=dish_stats, overall=overall,
+        heatmap=heatmap, heatmap_max=heatmap_max,
+        days_order=days_order, meals_order=meals_order,
+        comeback_dishes=comeback_dishes)
 
 
 @app.route('/admin/bookings')
@@ -2492,47 +2701,12 @@ def admin_alerts():
 
 @app.route('/admin/sentiment')
 def admin_sentiment():
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    dish_stats, overall = _get_dish_stats_and_sentiment()
-    return render_template("admin_sentiment.html", dish_stats=dish_stats, overall=overall)
+    return redirect('/admin/analytics')
 
 
 @app.route('/admin/heatmap')
 def admin_heatmap():
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("""
-        SELECT DAYNAME(booking_date) as day_name, meal, COUNT(*) as count
-        FROM bookings GROUP BY DAYNAME(booking_date), meal
-    """)
-    days_order  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-    meals_order = ['Breakfast','Lunch','Snacks','Dinner']
-    heatmap = {d: {m: 0 for m in meals_order} for d in days_order}
-    heatmap_max = 1
-    for row in cursor.fetchall():
-        d, m, c = row['day_name'], row['meal'], row['count']
-        if d in heatmap and m in heatmap[d]:
-            heatmap[d][m] = c
-            if c > heatmap_max: heatmap_max = c
-
-    # Comeback suggestions
-    cursor.execute("""
-        SELECT d.dish_name, AVG(f.rating) as avg_rating, MAX(b.booking_date) as last_served
-        FROM feedback f JOIN dishes d ON f.dish_id = d.id JOIN bookings b ON f.booking_id = b.id
-        GROUP BY d.dish_name
-        HAVING avg_rating >= 4.0 AND MAX(b.booking_date) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-        ORDER BY avg_rating DESC
-    """)
-    comeback_dishes = cursor.fetchall() or []
-    cursor.close(); conn.close()
-
-    return render_template("admin_heatmap.html",
-        heatmap=heatmap, heatmap_max=heatmap_max,
-        days_order=days_order, meals_order=meals_order,
-        comeback_dishes=comeback_dishes)
+    return redirect('/admin/analytics')
 
 
 # ================================================================
