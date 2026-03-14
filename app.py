@@ -4,13 +4,8 @@ import os
 import csv
 import io
 import re
-import hmac
-import hashlib
-import base64
 import smtplib
 import atexit
-import qrcode
-from qrcode.image.svg import SvgImage
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
@@ -2816,68 +2811,7 @@ def profile_update_notifications():
     return redirect('/profile')
 
 
-# ================================================================
-# ----------------  QR ATTENDANCE  -------------------------------
-# ================================================================
 
-# Meal serve times (IST hour) and valid window ±1.5 hrs
-MEAL_SERVE_HOURS = {
-    'Breakfast': 8,
-    'Lunch':     13,
-    'Snacks':    16,
-    'Dinner':    20,
-}
-MEAL_VALID_WINDOW_MINS = 90  # 1.5 hours either side of serve time
-
-def _time_window():
-    """Returns current 5-minute window number."""
-    return int(datetime.now(timezone.utc).timestamp() // 300)
-
-def current_meal_ist():
-    """Returns the meal currently being served based on IST time."""
-    h = now_ist().hour
-    m = now_ist().minute
-    mins = h * 60 + m
-    # Valid windows: serve_time ± 90 min
-    for meal, serve_h in MEAL_SERVE_HOURS.items():
-        serve_mins = serve_h * 60
-        if (serve_mins - MEAL_VALID_WINDOW_MINS) <= mins <= (serve_mins + MEAL_VALID_WINDOW_MINS):
-            return meal
-    return None  # no meal currently being served
-
-def make_qr_token(user_id, window=None):
-    """Generate a simple time-based token. Rotates every 5 minutes."""
-    if window is None:
-        window = _time_window()
-    secret = (os.environ.get("INTELLIMESS_SECRET") or "intellimess_dev_secret_change_me").encode()
-    msg    = f"intellimess-{user_id}-{window}".encode()
-    sig    = hmac.new(secret, msg, hashlib.sha256).hexdigest()[:16]
-    return f"{user_id}:{window}:{sig}"
-
-def verify_qr_token(token):
-    """Returns user_id if token is valid and not expired (±1 window grace = ~10 min)."""
-    try:
-        parts = token.split(":")
-        print(f"[VERIFY] parts={parts} count={len(parts)}")
-        if len(parts) != 3:
-            print(f"[VERIFY] FAIL: expected 3 parts, got {len(parts)}")
-            return None
-        uid_str, win_str, sig = parts
-        user_id = int(uid_str)
-        window  = int(win_str)
-        current = _time_window()
-        print(f"[VERIFY] token_window={window} current_window={current} diff={abs(current-window)}")
-        if abs(current - window) > 1:
-            print(f"[VERIFY] FAIL: token expired")
-            return None
-        expected = make_qr_token(user_id, window).split(":")[2]
-        print(f"[VERIFY] sig={sig} expected={expected} match={sig==expected}")
-        if hmac.compare_digest(sig, expected):
-            return user_id
-        print(f"[VERIFY] FAIL: signature mismatch")
-    except Exception as e:
-        print(f"[VERIFY] EXCEPTION: {e}")
-    return None
 
 
 @app.route('/admin/test-email')
