@@ -62,8 +62,6 @@ Every college mess faces the same daily chaos:
 
 ## 📸 Screenshots
 
-> *(Add screenshots to the `screenshots/` folder in your repo)*
-
 | Student Dashboard | Attendance Tracker | Meal Calendar |
 |---|---|---|
 | ![student](screenshots/student.png) | ![attendance](screenshots/attendance.png) | ![calendar](screenshots/calendar.png) |
